@@ -7,7 +7,8 @@
   "scripts": {
     "dev": "node --watch src/index.js",
     "start": "node src/index.js",
-    "lint": "echo 'lint pending — configure in Fase 2'"
+    "admin:create": "node src/scripts/create-admin.js",
+    "lint": "echo 'lint pending — configure in Fase 4'"
   },
   "dependencies": {
     "bcrypt": "^5.1.1",

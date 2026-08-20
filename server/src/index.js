@@ -1,14 +1,17 @@
 /**
  * Siete Rayos — servidor Express.
  *
- * Fase 2:
- *   ✅ GET /api/health
- *   ✅ GET /api/items              — público, cacheado desde Google Sheets
- *   ✅ GET /api/items/categories   — categorías con conteos
- *
- * Fase 3 añadirá:
- *   /api/auth/login (bcrypt + JWT + rate limit)
- *   POST/PATCH/DELETE /api/items  (protegidos)
+ * Fase 3:
+ *   ✅ GET  /api/health
+ *   ✅ GET  /api/items                (público)
+ *   ✅ GET  /api/items/categories     (público)
+ *   ✅ POST /api/auth/login           (rate-limited, bcrypt + JWT en cookies HttpOnly)
+ *   ✅ POST /api/auth/logout
+ *   ✅ POST /api/auth/refresh
+ *   ✅ GET  /api/auth/me
+ *   ✅ POST /api/items                (admin, valida y auditea)
+ *   ✅ PATCH /api/items/:id           (admin)
+ *   ✅ DELETE /api/items/:id          (admin)
  */
 import express from 'express'
 import helmet from 'helmet'
@@ -17,9 +20,13 @@ import cookieParser from 'cookie-parser'
 
 import { config } from './config/env.js'
 import itemsRouter from './routes/items.js'
+import authRouter from './routes/auth.js'
+import { usersBackend } from './services/users.js'
 
 const app = express()
 
+// Necesario para que req.ip refleje el cliente detrás de un proxy (Railway, etc.)
+app.set('trust proxy', 1)
 app.disable('x-powered-by')
 app.use(helmet())
 app.use(cors({ origin: config.clientOrigin, credentials: true }))
@@ -31,10 +38,12 @@ app.get('/api/health', (_req, res) => {
     status: 'ok',
     env: config.env,
     sheetsEnabled: config.sheetsEnabled,
+    usersBackend: usersBackend(),
     ts: new Date().toISOString(),
   })
 })
 
+app.use('/api/auth', authRouter)
 app.use('/api/items', itemsRouter)
 
 app.use((_req, res) => res.status(404).json({ error: 'Not Found' }))
@@ -48,6 +57,7 @@ app.use((err, _req, res, _next) => {
 app.listen(config.port, () => {
   console.log(
     `[siete-rayos] API :${config.port} ` +
-    `(env=${config.env}, sheets=${config.sheetsEnabled ? 'ON' : 'MOCK'}, client=${config.clientOrigin})`,
+    `(env=${config.env}, sheets=${config.sheetsEnabled ? 'ON' : 'MOCK'}, ` +
+    `users=${usersBackend()}, client=${config.clientOrigin})`,
   )
 })

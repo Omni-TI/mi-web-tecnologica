@@ -2,6 +2,7 @@ import { Routes, Route, Navigate } from 'react-router-dom'
 
 import PublicLayout from './components/layout/PublicLayout.jsx'
 import AdminLayout from './components/layout/AdminLayout.jsx'
+import AuthGuard from './components/admin/AuthGuard.jsx'
 
 import Home from './pages/Home.jsx'
 import Gallery from './pages/Gallery.jsx'
@@ -15,12 +16,6 @@ import NotFound from './pages/NotFound.jsx'
 import AdminLogin from './pages/admin/Login.jsx'
 import AdminDashboard from './pages/admin/Dashboard.jsx'
 
-/**
- * Rutas de la aplicación.
- *
- * Público:            /, /catalogo, /quienes-somos, /mision, /redes, /contacto, /privacidad
- * Administración:     /admin/login, /admin (protegida en Fase 3 con AuthGuard real)
- */
 export default function App() {
   return (
     <Routes>
@@ -36,8 +31,10 @@ export default function App() {
 
       <Route path="admin">
         <Route path="login" element={<AdminLogin />} />
-        <Route element={<AdminLayout />}>
-          <Route index element={<AdminDashboard />} />
+        <Route element={<AuthGuard />}>
+          <Route element={<AdminLayout />}>
+            <Route index element={<AdminDashboard />} />
+          </Route>
         </Route>
       </Route>
 

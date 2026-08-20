@@ -42,3 +42,9 @@ lerna-debug.log*
 *.local
 coverage/
 .eslintcache
+
+# Server local stores (usados cuando Google Sheets no está configurado)
+server/data/*.local.json
+server/data/*.local.log
+data/*.local.json
+data/*.local.log

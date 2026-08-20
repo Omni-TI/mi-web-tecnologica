@@ -1,67 +1,106 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Plus, Pencil, Trash2, RotateCw } from 'lucide-react'
 import { toast } from 'sonner'
 
-import { useItems } from '../../hooks/useItems.js'
+import { api } from '../../lib/api.js'
 import { formatCLP } from '../../lib/format.js'
 import LoadingGrid from '../../components/ui/LoadingGrid.jsx'
 import ErrorPanel from '../../components/ui/ErrorPanel.jsx'
 import ConfirmDeleteModal from '../../components/admin/ConfirmDeleteModal.jsx'
+import ItemFormModal from '../../components/admin/ItemFormModal.jsx'
 
 /**
- * Panel admin.
- * Fase 2: consume /api/items desde el backend.
- * Fase 3: hará POST/PATCH/DELETE contra el backend, ahora las acciones
- *         solo actualizan estado local para probar UX y muestran un toast.
+ * Panel admin — Fase 3.
+ * CRUD real contra /api/items. Cada acción muestra toast y actualiza estado local.
  */
 export default function Dashboard() {
-  const { items: initialItems, source, loading, error } = useItems()
-  const [items, setItems] = useState(initialItems)
+  const [items, setItems] = useState([])
+  const [source, setSource] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
   const [toDelete, setToDelete] = useState(null)
+  const [toEdit, setToEdit] = useState(null)         // { ...item } o null
+  const [creating, setCreating] = useState(false)    // boolean → abre modal en modo crear
+  const [saving, setSaving] = useState(false)
 
-  // Sincroniza el estado local cuando la carga inicial cambia.
+  const load = useCallback((signal) => {
+    setLoading(true)
+    return api.getItems(signal)
+      .then((res) => {
+        setItems(res.items ?? [])
+        setSource(res.source)
+        setError(null)
+      })
+      .catch((err) => {
+        if (err.name !== 'AbortError') setError(err)
+      })
+      .finally(() => setLoading(false))
+  }, [])
+
   useEffect(() => {
+    const ctrl = new AbortController()
+    // `load` es un fetch async que setState en el `.then`. La regla nueva
+    // se activa porque técnicamente estamos disparando actualizaciones
+    // desde un efecto; es el uso legítimo (carga inicial de datos externos).
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setItems(initialItems)
-  }, [initialItems])
+    load(ctrl.signal)
+    return () => ctrl.abort()
+  }, [load])
 
-  const totals = useMemo(() => {
-    return items.reduce(
-      (acc, it) => {
-        acc.total += it.cantidad_total
-        acc.disp += it.disponibles
-        acc.arr += it.en_arriendo
-        return acc
-      },
-      { total: 0, disp: 0, arr: 0 },
-    )
-  }, [items])
+  const totals = useMemo(() => items.reduce((acc, it) => {
+    acc.total += it.cantidad_total
+    acc.disp += it.disponibles
+    acc.arr += it.en_arriendo
+    return acc
+  }, { total: 0, disp: 0, arr: 0 }), [items])
 
-  function handleDelete() {
+  async function handleDelete() {
     if (!toDelete) return
-    setItems((prev) => prev.filter((x) => x.id !== toDelete.id))
-    toast.success(`«${toDelete.nombre}» eliminado (solo en cliente — Fase 3 persistirá).`)
-    setToDelete(null)
+    try {
+      await api.deleteItem(toDelete.id)
+      setItems((prev) => prev.filter((x) => x.id !== toDelete.id))
+      toast.success(`«${toDelete.nombre}» eliminado.`)
+      setToDelete(null)
+    } catch (err) {
+      toast.error(err.message || 'No se pudo eliminar.')
+    }
   }
 
-  function toggleRent(item) {
-    setItems((prev) =>
-      prev.map((x) => {
-        if (x.id !== item.id) return x
-        if (x.disponibles > 0) {
-          return { ...x, disponibles: x.disponibles - 1, en_arriendo: x.en_arriendo + 1 }
-        }
-        if (x.en_arriendo > 0) {
-          return { ...x, disponibles: x.disponibles + 1, en_arriendo: x.en_arriendo - 1 }
-        }
-        return x
-      }),
-    )
+  async function handleSubmit(payload) {
+    setSaving(true)
+    try {
+      if (toEdit) {
+        const updated = await api.updateItem(toEdit.id, payload)
+        setItems((prev) => prev.map((x) => (x.id === updated.id ? updated : x)))
+        toast.success(`«${updated.nombre}» actualizado.`)
+      } else {
+        const created = await api.createItem(payload)
+        setItems((prev) => [...prev, created])
+        toast.success(`«${created.nombre}» creado.`)
+      }
+      setToEdit(null)
+      setCreating(false)
+    } catch (err) {
+      toast.error(err.message || 'No se pudo guardar.')
+    } finally {
+      setSaving(false)
+    }
   }
 
-  if (error) {
-    return <ErrorPanel error={error} onRetry={() => window.location.reload()} />
+  async function toggleRent(item) {
+    if (item.disponibles === 0 && item.en_arriendo === 0) return
+    const patch = item.disponibles > 0
+      ? { disponibles: item.disponibles - 1, en_arriendo: item.en_arriendo + 1 }
+      : { disponibles: item.disponibles + 1, en_arriendo: item.en_arriendo - 1 }
+    try {
+      const updated = await api.updateItem(item.id, patch)
+      setItems((prev) => prev.map((x) => (x.id === updated.id ? updated : x)))
+    } catch (err) {
+      toast.error(err.message || 'No se pudo actualizar.')
+    }
   }
+
+  if (error) return <ErrorPanel error={error} onRetry={() => load()} />
 
   return (
     <>
@@ -76,14 +115,11 @@ export default function Dashboard() {
           <h2 className="font-display text-lg font-semibold">Inventario</h2>
           {source && (
             <span className="rounded-full border border-ink-700 px-2 py-0.5 text-[11px] uppercase tracking-wider text-ink-400">
-              {source === 'sheets' ? 'Google Sheets' : 'mock'}
+              {source === 'sheets' ? 'Google Sheets' : 'mock/local'}
             </span>
           )}
         </div>
-        <button
-          className="btn-primary"
-          onClick={() => toast.info('Formulario "nuevo artículo" — se implementa en Fase 3.')}
-        >
+        <button className="btn-primary" onClick={() => { setCreating(true); setToEdit(null) }}>
           <Plus className="h-4 w-4" /> Nuevo artículo
         </button>
       </div>
@@ -121,26 +157,18 @@ export default function Dashboard() {
                   <td className="px-4 py-3 text-right text-yellow-300">{it.en_arriendo}</td>
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-end gap-1">
-                      <button
-                        className="btn-ghost px-2 py-1"
-                        onClick={() => toggleRent(it)}
-                        aria-label={`Alternar arriendo de ${it.nombre}`}
-                        title="Marcar 1 unidad como arrendada/disponible"
-                      >
+                      <button className="btn-ghost px-2 py-1" onClick={() => toggleRent(it)}
+                              aria-label={`Alternar arriendo de ${it.nombre}`}
+                              title="Marcar 1 unidad como arrendada/disponible">
                         <RotateCw className="h-4 w-4" />
                       </button>
-                      <button
-                        className="btn-ghost px-2 py-1"
-                        onClick={() => toast.info(`Editar «${it.nombre}» — Fase 3.`)}
-                        aria-label={`Editar ${it.nombre}`}
-                      >
+                      <button className="btn-ghost px-2 py-1" onClick={() => { setToEdit(it); setCreating(false) }}
+                              aria-label={`Editar ${it.nombre}`}>
                         <Pencil className="h-4 w-4" />
                       </button>
-                      <button
-                        className="btn-ghost px-2 py-1 text-red-400 hover:text-red-300"
-                        onClick={() => setToDelete(it)}
-                        aria-label={`Eliminar ${it.nombre}`}
-                      >
+                      <button className="btn-ghost px-2 py-1 text-red-400 hover:text-red-300"
+                              onClick={() => setToDelete(it)}
+                              aria-label={`Eliminar ${it.nombre}`}>
                         <Trash2 className="h-4 w-4" />
                       </button>
                     </div>
@@ -151,6 +179,14 @@ export default function Dashboard() {
           </table>
         </div>
       )}
+
+      <ItemFormModal
+        open={creating || Boolean(toEdit)}
+        initial={toEdit}
+        saving={saving}
+        onCancel={() => { setToEdit(null); setCreating(false) }}
+        onSubmit={handleSubmit}
+      />
 
       <ConfirmDeleteModal
         open={Boolean(toDelete)}
@@ -163,10 +199,7 @@ export default function Dashboard() {
 }
 
 function StatCard({ label, value, tone }) {
-  const color =
-    tone === 'ok' ? 'text-emerald-300' :
-    tone === 'warn' ? 'text-yellow-300' :
-    'text-ink-50'
+  const color = tone === 'ok' ? 'text-emerald-300' : tone === 'warn' ? 'text-yellow-300' : 'text-ink-50'
   return (
     <div className="card p-4">
       <div className="text-xs uppercase tracking-wider text-ink-400">{label}</div>

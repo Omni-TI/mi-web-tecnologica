@@ -1,26 +1,24 @@
 /**
- * Cliente de Google Sheets con caché en memoria.
+ * Cliente de Google Sheets con caché en memoria + operaciones de escritura.
  *
  * Diseño:
- *  - Autenticación por service account leída de un archivo local (dev)
- *    o de una variable de entorno base64 (producción — plataformas que
- *    no dejan subir secretos como archivo).
- *  - Cache TTL configurable (default 20s) para no golpear la API Sheets
- *    en cada request de galería.
- *  - Si Sheets no está configurado, cae a un mock local para permitir
- *    desarrollo end-to-end sin credenciales. Se registra una vez al inicio.
- *
- * En Fase 3 se añaden aquí los métodos writeItem/updateItem/deleteItem
- * y las hojas `users` y `audit_log`.
+ *  - Auth por service account (archivo local o env base64).
+ *  - Cache TTL configurable — invalidada tras cada escritura.
+ *  - Fallback a mock (lectura) o a JSON local (escritura) cuando Sheets
+ *    no está configurado. Esto permite dev end-to-end sin credenciales.
  */
 import { google } from 'googleapis'
-import { readFileSync } from 'node:fs'
+import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs'
+import { dirname, join } from 'node:path'
 
 import { config } from '../config/env.js'
 import { MOCK_ITEMS } from '../data/mockItems.js'
 import { ItemSchema } from '../schemas/item.js'
 
-// Estado global de este módulo (singleton).
+const HEADERS = ['id', 'nombre', 'categoria', 'valor_arriendo', 'cantidad_total', 'disponibles', 'en_arriendo', 'imagen_url', 'fecha_creacion', 'activo']
+const LOCAL_STORE = join(process.cwd(), 'server', 'data', 'items.local.json')
+const LOCAL_STORE_FALLBACK = join(process.cwd(), 'data', 'items.local.json')
+
 let sheetsApi = null
 let cache = { at: 0, items: [] }
 let warnedFallback = false
@@ -49,9 +47,33 @@ function getClient() {
   return sheetsApi
 }
 
+function localPath() {
+  const p = existsSync(dirname(LOCAL_STORE)) ? LOCAL_STORE : LOCAL_STORE_FALLBACK
+  mkdirSync(dirname(p), { recursive: true })
+  return p
+}
+
+function readLocalItems() {
+  const p = localPath()
+  if (!existsSync(p)) {
+    // Seed inicial con el mock la primera vez.
+    writeFileSync(p, JSON.stringify(MOCK_ITEMS, null, 2))
+    return [...MOCK_ITEMS]
+  }
+  try {
+    return JSON.parse(readFileSync(p, 'utf8'))
+  } catch {
+    return [...MOCK_ITEMS]
+  }
+}
+
+function writeLocalItems(items) {
+  writeFileSync(localPath(), JSON.stringify(items, null, 2))
+}
+
 /**
- * Convierte una fila cruda (array de celdas) en un objeto item validado.
- * Filas inválidas se descartan silenciosamente (con un warn en consola).
+ * Convierte una fila cruda (array de celdas) en un item validado.
+ * Filas inválidas se descartan con un warn.
  */
 function rowToItem(row, headers) {
   const raw = Object.fromEntries(headers.map((h, i) => [h, row[i] ?? '']))
@@ -75,7 +97,17 @@ function rowToItem(row, headers) {
   return parsed.data
 }
 
-async function fetchFromSheets() {
+function itemToRow(it) {
+  return [
+    it.id, it.nombre, it.categoria,
+    Number(it.valor_arriendo), Number(it.cantidad_total),
+    Number(it.disponibles), Number(it.en_arriendo),
+    it.imagen_url || '', it.fecha_creacion || '',
+    it.activo === false ? 'false' : 'true',
+  ]
+}
+
+async function fetchAllFromSheets() {
   const client = getClient()
   if (!client) return null
   const res = await client.spreadsheets.values.get({
@@ -90,42 +122,107 @@ async function fetchFromSheets() {
   return body.map((r) => rowToItem(r, norm)).filter(Boolean)
 }
 
-/**
- * Devuelve los items disponibles al público.
- * Aplica el TTL de caché. Si Sheets no está configurado, devuelve el mock.
- */
+async function writeAllToSheets(items) {
+  const client = getClient()
+  if (!client) throw new Error('Sheets not configured')
+  const values = [HEADERS, ...items.map(itemToRow)]
+  await client.spreadsheets.values.update({
+    spreadsheetId: config.sheets.id,
+    range: `${config.sheets.itemsSheetName}!A1:J${values.length}`,
+    valueInputOption: 'RAW',
+    requestBody: { values },
+  })
+  // Limpia filas sobrantes.
+  await client.spreadsheets.values.clear({
+    spreadsheetId: config.sheets.id,
+    range: `${config.sheets.itemsSheetName}!A${values.length + 1}:J1000`,
+  }).catch(() => {})
+}
+
+async function readAllRaw() {
+  if (config.sheetsEnabled) {
+    const items = await fetchAllFromSheets()
+    return items ?? []
+  }
+  return readLocalItems()
+}
+
+async function writeAllRaw(items) {
+  if (config.sheetsEnabled) return writeAllToSheets(items)
+  return writeLocalItems(items)
+}
+
+/** Público: devuelve items visibles (respetando `activo`) usando caché. */
 export async function getItems({ includeInactive = false } = {}) {
   const now = Date.now()
   const ttlMs = config.sheets.cacheTtlSec * 1000
-
   if (cache.items.length && now - cache.at < ttlMs) {
     return includeInactive ? cache.items : cache.items.filter((i) => i.activo)
   }
 
-  if (!config.sheetsEnabled) {
-    if (config.logSheetsFallback && !warnedFallback) {
-      console.warn(
-        '[sheets] Google Sheets no configurado (falta GOOGLE_SHEETS_ID o credenciales). ' +
-        'Sirviendo datos MOCK para desarrollo.',
-      )
-      warnedFallback = true
-    }
-    cache = { at: now, items: MOCK_ITEMS }
-  } else {
-    try {
-      const items = await fetchFromSheets()
-      cache = { at: now, items: items ?? [] }
-    } catch (err) {
-      // Si Sheets falla puntualmente, sirve la última caché válida — evita
-      // caer la galería por un rate limit transitorio.
-      console.error('[sheets] error consultando Sheets, uso caché previa si existe:', err.message)
-      if (cache.items.length === 0) throw err
-    }
+  if (!config.sheetsEnabled && config.logSheetsFallback && !warnedFallback) {
+    console.warn(
+      '[sheets] Google Sheets no configurado. Sirviendo datos MOCK/JSON local para desarrollo.',
+    )
+    warnedFallback = true
+  }
+
+  try {
+    const items = await readAllRaw()
+    cache = { at: now, items }
+  } catch (err) {
+    console.error('[sheets] error consultando Sheets, uso caché previa si existe:', err.message)
+    if (cache.items.length === 0) throw err
   }
   return includeInactive ? cache.items : cache.items.filter((i) => i.activo)
 }
 
-/** Invalida la caché — útil tras una escritura administrativa (Fase 3). */
+/** Invalida la caché — se llama tras cada escritura. */
 export function invalidateItemsCache() {
   cache = { at: 0, items: [] }
+}
+
+/** Crea un item (id se genera si no viene). Devuelve el item creado. */
+export async function createItem(input) {
+  const all = await readAllRaw()
+  const id = `IT-${Date.now().toString(36).toUpperCase()}`
+  const item = {
+    id,
+    fecha_creacion: new Date().toISOString().slice(0, 10),
+    activo: true,
+    ...input,
+  }
+  const parsed = ItemSchema.parse(item)
+  all.push(parsed)
+  await writeAllRaw(all)
+  invalidateItemsCache()
+  return parsed
+}
+
+/** Actualiza un item existente. Devuelve el nuevo estado. */
+export async function updateItem(id, patch) {
+  const all = await readAllRaw()
+  const idx = all.findIndex((i) => i.id === id)
+  if (idx === -1) {
+    const e = new Error('Item no encontrado'); e.status = 404; throw e
+  }
+  const merged = { ...all[idx], ...patch, id: all[idx].id }
+  const parsed = ItemSchema.parse(merged)
+  all[idx] = parsed
+  await writeAllRaw(all)
+  invalidateItemsCache()
+  return parsed
+}
+
+/** Elimina un item por id. Devuelve el item eliminado. */
+export async function deleteItem(id) {
+  const all = await readAllRaw()
+  const idx = all.findIndex((i) => i.id === id)
+  if (idx === -1) {
+    const e = new Error('Item no encontrado'); e.status = 404; throw e
+  }
+  const [removed] = all.splice(idx, 1)
+  await writeAllRaw(all)
+  invalidateItemsCache()
+  return removed
 }

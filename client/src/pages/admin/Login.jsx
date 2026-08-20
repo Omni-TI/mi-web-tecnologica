@@ -1,30 +1,36 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { Zap, Lock, User } from 'lucide-react'
 import { toast } from 'sonner'
 
-/**
- * Login placeholder (Fase 1).
- * En Fase 3 hará POST /api/auth/login, recibirá cookie HttpOnly y aplicará
- * rate-limit + bloqueo por intentos fallidos.
- *
- * Por ahora acepta cualquier credencial no vacía para permitir probar la UX
- * del panel — se mostrará una advertencia visible.
- */
-export default function Login() {
-  const [user, setUser] = useState('')
-  const [pass, setPass] = useState('')
-  const [loading, setLoading] = useState(false)
-  const navigate = useNavigate()
+import { useAuth } from '../../hooks/useAuth.jsx'
 
-  function onSubmit(e) {
+export default function Login() {
+  const [username, setUsername] = useState('')
+  const [password, setPassword] = useState('')
+  const [loading, setLoading] = useState(false)
+  const { login } = useAuth()
+  const navigate = useNavigate()
+  const location = useLocation()
+  const redirectTo = location.state?.from?.pathname || '/admin'
+
+  async function onSubmit(e) {
     e.preventDefault()
-    if (!user || !pass) return
+    if (!username || !password) return
     setLoading(true)
-    setTimeout(() => {
-      toast.warning('Auth simulada. Se integrará JWT + bcrypt en Fase 3.')
-      navigate('/admin')
-    }, 400)
+    try {
+      await login(username, password)
+      toast.success('Sesión iniciada.')
+      navigate(redirectTo, { replace: true })
+    } catch (err) {
+      const detail =
+        err.status === 429 ? 'Demasiados intentos. Espera y vuelve a intentar.'
+        : err.status === 423 ? 'Cuenta temporalmente bloqueada por intentos fallidos.'
+        : 'Credenciales inválidas.'
+      toast.error(detail)
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
@@ -51,8 +57,8 @@ export default function Login() {
               required
               autoComplete="username"
               className="input pl-9"
-              value={user}
-              onChange={(e) => setUser(e.target.value)}
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
             />
           </div>
         </label>
@@ -65,8 +71,8 @@ export default function Login() {
               type="password"
               autoComplete="current-password"
               className="input pl-9"
-              value={pass}
-              onChange={(e) => setPass(e.target.value)}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
             />
           </div>
         </label>
@@ -75,9 +81,11 @@ export default function Login() {
           {loading ? 'Verificando…' : 'Entrar'}
         </button>
 
-        <p className="mt-4 rounded-md border border-yellow-500/40 bg-yellow-500/10 p-2 text-[11px] text-yellow-200">
-          ⚠️ Autenticación aún NO implementada. En esta fase el login es simulado y
-          no protege realmente el panel. Se completará en Fase 3.
+        <p className="mt-4 text-[11px] text-ink-500">
+          Para crear el primer admin ejecuta en el servidor:
+          <code className="mt-1 block rounded bg-ink-950/60 px-2 py-1 font-mono text-[11px] text-brand-300">
+            npm run admin:create -- --user admin --password &lt;secreta&gt;
+          </code>
         </p>
       </form>
     </div>

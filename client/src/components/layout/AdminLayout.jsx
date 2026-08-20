@@ -1,11 +1,19 @@
-import { Link, NavLink, Outlet } from 'react-router-dom'
+import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { LogOut, LayoutGrid, Zap } from 'lucide-react'
+import { toast } from 'sonner'
 
-/**
- * Layout admin. En Fase 3 se envolverá con <AuthGuard/> que verifica JWT.
- * Por ahora es solo estructura — el dashboard es placeholder.
- */
+import { useAuth } from '../../hooks/useAuth.jsx'
+
 export default function AdminLayout() {
+  const { user, logout } = useAuth()
+  const navigate = useNavigate()
+
+  async function handleLogout() {
+    await logout()
+    toast.success('Sesión cerrada.')
+    navigate('/admin/login', { replace: true })
+  }
+
   return (
     <div className="flex min-h-screen bg-ink-950 text-ink-50">
       <aside className="hidden w-64 shrink-0 border-r border-ink-800 bg-ink-900 md:flex md:flex-col">
@@ -26,19 +34,27 @@ export default function AdminLayout() {
             <LayoutGrid className="h-4 w-4" /> Inventario
           </NavLink>
         </nav>
-        <div className="border-t border-ink-800 p-3">
-          <Link to="/admin/login" className="btn-ghost w-full justify-start">
+        <div className="space-y-2 border-t border-ink-800 p-3">
+          {user && (
+            <div className="rounded-md bg-ink-800/60 px-3 py-2 text-xs">
+              <div className="text-ink-400">Sesión</div>
+              <div className="truncate font-medium text-ink-100">{user.username}</div>
+            </div>
+          )}
+          <button onClick={handleLogout} className="btn-ghost w-full justify-start">
             <LogOut className="h-4 w-4" /> Cerrar sesión
-          </Link>
+          </button>
         </div>
       </aside>
 
       <div className="flex-1">
         <header className="flex items-center justify-between border-b border-ink-800 bg-ink-900 px-4 py-3 md:px-6">
           <h1 className="font-display text-lg font-semibold">Panel de administración</h1>
-          <span className="hidden text-xs text-ink-400 sm:inline">
-            Autenticación pendiente — Fase 3
-          </span>
+          {user && (
+            <span className="hidden text-xs text-ink-400 sm:inline">
+              Conectado como <span className="text-brand-400">{user.username}</span>
+            </span>
+          )}
         </header>
         <main className="p-4 md:p-6">
           <Outlet />

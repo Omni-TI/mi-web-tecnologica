@@ -1,33 +1,24 @@
 import { Router } from 'express'
-import { getItems } from '../services/sheets.js'
+
 import { config } from '../config/env.js'
+import { getItems, createItem, updateItem, deleteItem } from '../services/sheets.js'
+import { requireAuth } from '../middleware/auth.js'
+import { validateBody } from '../middleware/validate.js'
+import { ItemCreateSchema, ItemUpdateSchema } from '../schemas/item.js'
+import { audit } from '../services/audit.js'
 
 const router = Router()
 
-/**
- * GET /api/items
- * Público. Devuelve el catálogo listo para consumo del cliente.
- * Cabecera Cache-Control corta permite CDN/proxy revalidar frecuentemente.
- */
+/* ===== Público ===== */
+
 router.get('/', async (_req, res, next) => {
   try {
     const items = await getItems()
     res.set('Cache-Control', `public, max-age=${config.sheets.cacheTtlSec}`)
-    res.json({
-      source: config.sheetsEnabled ? 'sheets' : 'mock',
-      count: items.length,
-      items,
-    })
-  } catch (err) {
-    next(err)
-  }
+    res.json({ source: config.sheetsEnabled ? 'sheets' : 'mock', count: items.length, items })
+  } catch (err) { next(err) }
 })
 
-/**
- * GET /api/items/categories
- * Deriva la lista de categorías con conteos — evita que el frontend
- * la calcule redundantemente y facilita cachear en CDN.
- */
 router.get('/categories', async (_req, res, next) => {
   try {
     const items = await getItems()
@@ -39,7 +30,55 @@ router.get('/categories', async (_req, res, next) => {
         .map(([name, count]) => ({ name, count }))
         .sort((a, b) => b.count - a.count),
     })
+  } catch (err) { next(err) }
+})
+
+/* ===== Admin ===== */
+
+router.post('/', requireAuth, validateBody(ItemCreateSchema), async (req, res, next) => {
+  try {
+    const created = await createItem(req.body)
+    await audit({
+      user: req.user.username,
+      action: 'item.create',
+      entityId: created.id,
+      changes: created,
+      ip: req.ip,
+    })
+    res.status(201).json(created)
+  } catch (err) { next(err) }
+})
+
+router.patch('/:id', requireAuth, validateBody(ItemUpdateSchema), async (req, res, next) => {
+  try {
+    const updated = await updateItem(req.params.id, req.body)
+    await audit({
+      user: req.user.username,
+      action: 'item.update',
+      entityId: updated.id,
+      changes: req.body,
+      ip: req.ip,
+    })
+    res.json(updated)
   } catch (err) {
+    if (err.status) return res.status(err.status).json({ error: err.message })
+    next(err)
+  }
+})
+
+router.delete('/:id', requireAuth, async (req, res, next) => {
+  try {
+    const removed = await deleteItem(req.params.id)
+    await audit({
+      user: req.user.username,
+      action: 'item.delete',
+      entityId: removed.id,
+      changes: { nombre: removed.nombre },
+      ip: req.ip,
+    })
+    res.json({ ok: true, id: removed.id })
+  } catch (err) {
+    if (err.status) return res.status(err.status).json({ error: err.message })
     next(err)
   }
 })

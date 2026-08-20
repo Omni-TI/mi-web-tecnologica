@@ -40,4 +40,15 @@ export const api = {
   getItems: (signal) => request('/api/items', { signal }),
   getCategories: (signal) => request('/api/items/categories', { signal }),
   health: (signal) => request('/api/health', { signal }),
+
+  // Auth
+  login: (username, password) => request('/api/auth/login', { method: 'POST', body: { username, password } }),
+  logout: () => request('/api/auth/logout', { method: 'POST' }),
+  me: (signal) => request('/api/auth/me', { signal }),
+  refresh: () => request('/api/auth/refresh', { method: 'POST' }),
+
+  // Admin CRUD
+  createItem: (payload) => request('/api/items', { method: 'POST', body: payload }),
+  updateItem: (id, patch) => request(`/api/items/${encodeURIComponent(id)}`, { method: 'PATCH', body: patch }),
+  deleteItem: (id) => request(`/api/items/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 }
