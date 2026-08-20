@@ -6,7 +6,7 @@ Repositorio monorepo:
 
 ```
 /client   → Frontend React 19 + Vite + Tailwind (paleta "Tormenta cálida")
-/server   → Backend Node.js + Express + Google Sheets API (scaffold en Fase 1)
+/server   → Backend Node.js + Express + Google Sheets API
 /docs     → Guías de configuración (Google Sheets, seguridad, despliegue)
 ```
 
@@ -14,8 +14,8 @@ Repositorio monorepo:
 
 | Fase | Descripción | Estado |
 |------|-------------|--------|
-| 1 | Setup, estructura de páginas y navegación (contenido placeholder) | ✅ En revisión |
-| 2 | Integración con Google Sheets + galería pública + búsqueda | Pendiente |
+| 1 | Setup, estructura de páginas y navegación (contenido placeholder) | ✅ |
+| 2 | Backend + integración con Google Sheets + galería/dashboard consumiendo API | ✅ |
 | 3 | Panel admin: login (JWT + bcrypt) + CRUD del inventario | Pendiente |
 | 4 | Endurecimiento de seguridad + pulido de diseño + despliegue | Pendiente |
 
@@ -32,23 +32,32 @@ cd mi-web-tecnologica
 npm install            # instala workspaces (client + server)
 ```
 
-## Desarrollo
-
-Arranca ambos workspaces en paralelo:
+## Configuración
 
 ```bash
-# En una terminal
-npm run dev:client     # http://localhost:5173
-
-# En otra terminal
-cp server/.env.example server/.env
-npm run dev:server     # http://localhost:4000
+cp server/.env.example server/.env    # backend
+cp client/.env.example client/.env    # frontend (opcional en dev)
 ```
 
-O ambos a la vez:
+Sin credenciales Google, el backend arranca en modo **MOCK** y sirve un
+catálogo de ejemplo. Para conectar la hoja real sigue
+[`docs/GOOGLE_SHEETS_SETUP.md`](docs/GOOGLE_SHEETS_SETUP.md).
+
+## Desarrollo
 
 ```bash
-npm run dev            # levanta client y server en paralelo
+npm run dev            # levanta client + server en paralelo (concurrently)
+
+# o por separado:
+npm run dev:server     # http://localhost:4000  → API
+npm run dev:client     # http://localhost:5173  → SPA (proxya /api al backend)
+```
+
+## Verificación rápida
+
+```bash
+curl http://localhost:4000/api/health
+curl http://localhost:4000/api/items | jq '.source, .count'
 ```
 
 ## Scripts
@@ -64,25 +73,21 @@ npm run dev            # levanta client y server en paralelo
 
 ## Variables de entorno
 
-Ver `server/.env.example`. Nunca subas `.env` ni credenciales al repositorio
-(el `.gitignore` ya está preparado).
+- **Backend** (`server/.env`) — ver `server/.env.example`. Incluye Google
+  Sheets, JWT (Fase 3) y rate limits.
+- **Frontend** (`client/.env`) — `VITE_API_BASE_URL` (vacío en dev, URL del
+  backend desplegado en prod).
 
-## Google Sheets
+Nunca subas `.env` ni credenciales — el `.gitignore` ya está preparado.
 
-Instrucciones paso a paso en [`docs/GOOGLE_SHEETS_SETUP.md`](docs/GOOGLE_SHEETS_SETUP.md).
+## Documentación
 
-## Seguridad
-
-Resumen de medidas en [`docs/SECURITY.md`](docs/SECURITY.md).
+- [`docs/GOOGLE_SHEETS_SETUP.md`](docs/GOOGLE_SHEETS_SETUP.md) — configuración de la hoja + service account.
+- [`docs/SECURITY.md`](docs/SECURITY.md) — checklist de medidas implementadas.
 
 ## Stack
 
 - **Frontend**: React 19, Vite 8, TailwindCSS 3, React Router 7, Recharts, Fuse.js, Headless UI, Sonner
-- **Backend** *(planificado)*: Express, Helmet, bcrypt, jsonwebtoken, googleapis, express-rate-limit, zod
+- **Backend**: Express, Helmet, googleapis, zod, cookie-parser, bcrypt/jsonwebtoken (para Fase 3)
 - **Base de datos**: Google Sheets vía service account
 - **Despliegue objetivo**: Vercel (frontend) + Railway (backend)
-
-## Contribuir
-
-Trabajar sobre la rama `claude/siete-rayos-rental-app-kcvg8f`. Todos los cambios
-llegan a `main` vía Pull Request.

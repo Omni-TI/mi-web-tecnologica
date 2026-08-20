@@ -1,34 +1,41 @@
 /**
- * Siete Rayos — servidor Express (scaffold Fase 1).
+ * Siete Rayos — servidor Express.
  *
- * En Fase 2 se conectará a Google Sheets y se expondrán los endpoints:
- *   GET  /api/health           — ya funciona.
- *   GET  /api/items            — público, cacheado.
- *   POST /api/auth/login       — protegido con rate limit + bcrypt + JWT.
- *   POST /api/items            — admin, valida disponibles + en_arriendo === total.
- *   ...
+ * Fase 2:
+ *   ✅ GET /api/health
+ *   ✅ GET /api/items              — público, cacheado desde Google Sheets
+ *   ✅ GET /api/items/categories   — categorías con conteos
  *
- * Esta fase solo levanta el servidor con Helmet + CORS restringido para
- * validar la infraestructura.
+ * Fase 3 añadirá:
+ *   /api/auth/login (bcrypt + JWT + rate limit)
+ *   POST/PATCH/DELETE /api/items  (protegidos)
  */
-import 'dotenv/config'
 import express from 'express'
 import helmet from 'helmet'
 import cors from 'cors'
 import cookieParser from 'cookie-parser'
 
-const app = express()
-const PORT = process.env.PORT || 4000
-const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || 'http://localhost:5173'
+import { config } from './config/env.js'
+import itemsRouter from './routes/items.js'
 
+const app = express()
+
+app.disable('x-powered-by')
 app.use(helmet())
-app.use(cors({ origin: CLIENT_ORIGIN, credentials: true }))
+app.use(cors({ origin: config.clientOrigin, credentials: true }))
 app.use(express.json({ limit: '100kb' }))
 app.use(cookieParser())
 
 app.get('/api/health', (_req, res) => {
-  res.json({ status: 'ok', phase: 1, ts: new Date().toISOString() })
+  res.json({
+    status: 'ok',
+    env: config.env,
+    sheetsEnabled: config.sheetsEnabled,
+    ts: new Date().toISOString(),
+  })
 })
+
+app.use('/api/items', itemsRouter)
 
 app.use((_req, res) => res.status(404).json({ error: 'Not Found' }))
 
@@ -38,6 +45,9 @@ app.use((err, _req, res, _next) => {
   res.status(500).json({ error: 'Internal Server Error' })
 })
 
-app.listen(PORT, () => {
-  console.log(`[siete-rayos] API escuchando en http://localhost:${PORT}`)
+app.listen(config.port, () => {
+  console.log(
+    `[siete-rayos] API :${config.port} ` +
+    `(env=${config.env}, sheets=${config.sheetsEnabled ? 'ON' : 'MOCK'}, client=${config.clientOrigin})`,
+  )
 })

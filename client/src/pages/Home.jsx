@@ -1,11 +1,13 @@
 import { Link } from 'react-router-dom'
 import { ArrowRight, Sparkles, Search, ShieldCheck, Package } from 'lucide-react'
 import ItemCard from '../components/gallery/ItemCard.jsx'
-import { MOCK_ITEMS } from '../data/mockItems.js'
-
-const HIGHLIGHTS = MOCK_ITEMS.slice(0, 4)
+import LoadingGrid from '../components/ui/LoadingGrid.jsx'
+import { useItems } from '../hooks/useItems.js'
 
 export default function Home() {
+  const { items, loading } = useItems()
+  const highlights = items.slice(0, 4)
+
   return (
     <>
       {/* HERO */}
@@ -96,10 +98,18 @@ export default function Home() {
             Ver catálogo completo →
           </Link>
         </div>
-        <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {HIGHLIGHTS.map((it) => (
-            <ItemCard key={it.id} item={it} />
-          ))}
+        <div className="mt-6">
+          {loading ? (
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <LoadingGrid count={4} />
+            </div>
+          ) : (
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              {highlights.map((it) => (
+                <ItemCard key={it.id} item={it} />
+              ))}
+            </div>
+          )}
         </div>
       </section>
     </>

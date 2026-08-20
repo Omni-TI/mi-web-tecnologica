@@ -1,5 +1,5 @@
 import { Zap, PackageCheck, PackageX } from 'lucide-react'
-import { formatCLP } from '../../data/mockItems.js'
+import { formatCLP } from '../../lib/format.js'
 
 /**
  * Tarjeta de artículo para la galería pública.
