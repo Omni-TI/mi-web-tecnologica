@@ -1,37 +1,50 @@
 /**
- * Siete Rayos — servidor Express.
+ * Siete Rayos — servidor Express (Fase 4).
  *
- * Fase 3:
- *   ✅ GET  /api/health
- *   ✅ GET  /api/items                (público)
- *   ✅ GET  /api/items/categories     (público)
- *   ✅ POST /api/auth/login           (rate-limited, bcrypt + JWT en cookies HttpOnly)
- *   ✅ POST /api/auth/logout
- *   ✅ POST /api/auth/refresh
- *   ✅ GET  /api/auth/me
- *   ✅ POST /api/items                (admin, valida y auditea)
- *   ✅ PATCH /api/items/:id           (admin)
- *   ✅ DELETE /api/items/:id          (admin)
+ * Endpoints públicos:
+ *   GET  /api/health
+ *   GET  /api/items
+ *   GET  /api/items/categories
+ *
+ * Auth:
+ *   POST /api/auth/login    (rate-limited)
+ *   POST /api/auth/logout
+ *   POST /api/auth/refresh
+ *   GET  /api/auth/me
+ *
+ * Admin (requireAuth + CSRF):
+ *   POST/PATCH/DELETE /api/items
+ *   GET  /api/audit
  */
 import express from 'express'
-import helmet from 'helmet'
 import cors from 'cors'
 import cookieParser from 'cookie-parser'
 
 import { config } from './config/env.js'
+import { securityHeaders } from './middleware/security.js'
+import { csrfIssue, csrfProtect } from './middleware/csrf.js'
+
 import itemsRouter from './routes/items.js'
 import authRouter from './routes/auth.js'
+import auditRouter from './routes/audit.js'
 import { usersBackend } from './services/users.js'
 
 const app = express()
 
-// Necesario para que req.ip refleje el cliente detrás de un proxy (Railway, etc.)
+// Necesario para que req.ip refleje el cliente detrás de un proxy (Railway).
 app.set('trust proxy', 1)
 app.disable('x-powered-by')
-app.use(helmet())
+
+// Helmet: CSP estricta + HSTS + defaults en producción; defaults en dev.
+app.use(securityHeaders())
+
 app.use(cors({ origin: config.clientOrigin, credentials: true }))
 app.use(express.json({ limit: '100kb' }))
 app.use(cookieParser())
+
+// Emite cookie CSRF (double-submit) para que el cliente la lea y la envíe
+// en el header X-CSRF-Token en operaciones mutantes.
+app.use(csrfIssue)
 
 app.get('/api/health', (_req, res) => {
   res.json({
@@ -43,8 +56,14 @@ app.get('/api/health', (_req, res) => {
   })
 })
 
-app.use('/api/auth', authRouter)
-app.use('/api/items', itemsRouter)
+// Auth: el LOGIN requiere CSRF también (protege contra login-CSRF).
+app.use('/api/auth', csrfProtect, authRouter)
+
+// Items: GET públicos sin csrf; mutaciones dentro pasan por requireAuth + csrfProtect.
+app.use('/api/items', csrfProtect, itemsRouter)
+
+// Auditoría (solo admin).
+app.use('/api/audit', csrfProtect, auditRouter)
 
 app.use((_req, res) => res.status(404).json({ error: 'Not Found' }))
 

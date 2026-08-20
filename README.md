@@ -16,8 +16,8 @@ Repositorio monorepo:
 |------|-------------|--------|
 | 1 | Setup, estructura de páginas y navegación (contenido placeholder) | ✅ |
 | 2 | Backend + integración con Google Sheets + galería/dashboard consumiendo API | ✅ |
-| 3 | Panel admin: login (JWT + bcrypt) + CRUD del inventario | Pendiente |
-| 4 | Endurecimiento de seguridad + pulido de diseño + despliegue | Pendiente |
+| 3 | Panel admin: login (JWT + bcrypt) + CRUD del inventario | ✅ |
+| 4 | Endurecimiento de seguridad + página de auditoría + code split + docs de despliegue | ✅ |
 
 ## Requisitos
 
@@ -80,10 +80,23 @@ curl http://localhost:4000/api/items | jq '.source, .count'
 
 Nunca subas `.env` ni credenciales — el `.gitignore` ya está preparado.
 
+## Primer admin
+
+Cuando arranques por primera vez (Sheets configurado o modo local):
+
+```bash
+npm run admin:create --workspace @siete-rayos/server -- --user admin --password 'CambiaEsto!'
+```
+
+El script hashea con bcrypt y guarda en la hoja `users` (o en
+`server/data/users.local.json` si Sheets no está configurado). Reejecutarlo
+con el mismo `--user` rota la contraseña.
+
 ## Documentación
 
 - [`docs/GOOGLE_SHEETS_SETUP.md`](docs/GOOGLE_SHEETS_SETUP.md) — configuración de la hoja + service account.
 - [`docs/SECURITY.md`](docs/SECURITY.md) — checklist de medidas implementadas.
+- [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) — despliegue Vercel + Railway con troubleshooting.
 
 ## Stack
 
