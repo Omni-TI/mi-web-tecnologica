@@ -1,7 +1,14 @@
 /**
  * Configuración centralizada del servidor.
  * Toda lectura de `process.env` pasa por aquí para no dispersar defaults ni
- * validaciones. Si en el futuro añadimos `zod` para validar env, va aquí.
+ * validaciones.
+ *
+ * Modos de datos (sheetsMode):
+ *   - 'sheets-api'  : GOOGLE_SHEETS_ID + service account → lectura y ESCRITURA.
+ *   - 'public-csv'  : GOOGLE_SHEETS_ID sin service account → solo LECTURA
+ *                     (la hoja debe estar compartida como "cualquiera con el
+ *                     enlace: lector"). No requiere Google Cloud.
+ *   - 'local'       : sin ID → datos mock / JSON local (dev sin credenciales).
  */
 import 'dotenv/config'
 
@@ -15,6 +22,8 @@ export const config = {
 
   sheets: {
     id: process.env.GOOGLE_SHEETS_ID || '',
+    // gid de la pestaña (0 = primera). Solo se usa en modo public-csv.
+    gid: process.env.GOOGLE_SHEETS_GID || '0',
     serviceAccountFile: process.env.GOOGLE_SERVICE_ACCOUNT_FILE || '',
     serviceAccountJsonB64: process.env.GOOGLE_SERVICE_ACCOUNT_JSON_B64 || '',
     // TTL para caché de items en segundos (evita golpear Sheets en cada request).
@@ -22,11 +31,21 @@ export const config = {
     itemsSheetName: process.env.SHEETS_ITEMS_TAB || 'items',
   },
 
-  // Si no hay ID + credenciales, el backend usa mock. Útil para dev.
+  /** Modo de datos activo (ver arriba). */
+  get sheetsMode() {
+    if (!this.sheets.id) return 'local'
+    if (this.sheets.serviceAccountFile || this.sheets.serviceAccountJsonB64) return 'sheets-api'
+    return 'public-csv'
+  },
+
+  /** ¿Estamos leyendo desde Google (cualquier modo)? */
   get sheetsEnabled() {
-    return Boolean(
-      this.sheets.id && (this.sheets.serviceAccountFile || this.sheets.serviceAccountJsonB64),
-    )
+    return this.sheetsMode !== 'local'
+  },
+
+  /** ¿Podemos escribir de vuelta a la hoja? Solo con service account. */
+  get sheetsCanWrite() {
+    return this.sheetsMode === 'sheets-api'
   },
 
   auth: {

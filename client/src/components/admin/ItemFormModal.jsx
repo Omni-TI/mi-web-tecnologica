@@ -16,6 +16,8 @@ export default function ItemFormModal({ open, initial, onCancel, onSubmit, savin
     defaultValues: {
       nombre: '',
       categoria: '',
+      subcategoria1: '',
+      subcategoria2: '',
       valor_arriendo: 0,
       cantidad_total: 1,
       disponibles: 1,
@@ -30,6 +32,8 @@ export default function ItemFormModal({ open, initial, onCancel, onSubmit, savin
       reset(initial ? { ...initial } : {
         nombre: '',
         categoria: '',
+        subcategoria1: '',
+        subcategoria2: '',
         valor_arriendo: 0,
         cantidad_total: 1,
         disponibles: 1,
@@ -49,6 +53,8 @@ export default function ItemFormModal({ open, initial, onCancel, onSubmit, savin
     const payload = {
       nombre: values.nombre.trim(),
       categoria: values.categoria.trim(),
+      subcategoria1: values.subcategoria1?.trim() || '',
+      subcategoria2: values.subcategoria2?.trim() || '',
       valor_arriendo: Number(values.valor_arriendo),
       cantidad_total: Number(values.cantidad_total),
       disponibles: Number(values.disponibles),
@@ -87,8 +93,16 @@ export default function ItemFormModal({ open, initial, onCancel, onSubmit, savin
                   <input className="input" {...register('nombre', { required: 'Requerido', maxLength: 120 })} />
                 </Field>
                 <Field label="Categoría" error={errors.categoria?.message}>
-                  <input className="input" {...register('categoria', { required: 'Requerido', maxLength: 60 })} />
+                  <input className="input" {...register('categoria', { required: 'Requerido', maxLength: 80 })} />
                 </Field>
+                <div className="grid grid-cols-2 gap-3">
+                  <Field label="Subcategoría 1">
+                    <input className="input" {...register('subcategoria1', { maxLength: 80 })} />
+                  </Field>
+                  <Field label="Subcategoría 2">
+                    <input className="input" {...register('subcategoria2', { maxLength: 80 })} />
+                  </Field>
+                </div>
                 <div className="grid grid-cols-2 gap-3">
                   <Field label="Valor arriendo (CLP)">
                     <input type="number" min={0} step={500} className="input" {...register('valor_arriendo', { valueAsNumber: true, min: 0 })} />

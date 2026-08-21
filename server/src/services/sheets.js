@@ -1,11 +1,14 @@
 /**
- * Cliente de Google Sheets con caché en memoria + operaciones de escritura.
+ * Cliente de datos del catálogo. Tres modos (ver config/env.js → sheetsMode):
  *
- * Diseño:
- *  - Auth por service account (archivo local o env base64).
- *  - Cache TTL configurable — invalidada tras cada escritura.
- *  - Fallback a mock (lectura) o a JSON local (escritura) cuando Sheets
- *    no está configurado. Esto permite dev end-to-end sin credenciales.
+ *   - 'sheets-api'  : lectura y escritura vía Google Sheets API (service account).
+ *   - 'public-csv'  : lectura desde la hoja publicada como CSV (sin credenciales).
+ *                     La escritura NO está disponible en este modo.
+ *   - 'local'       : mock / JSON local para desarrollo sin credenciales.
+ *
+ * Mapeo de columnas: la hoja del cliente usa nombres en español
+ * (categorias, sub-categoria1, sub-categoria2, nombre, valor, id, Total,
+ * arriendo, disponible). Aquí los normalizamos a nuestro esquema interno.
  */
 import { google } from 'googleapis'
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs'
@@ -15,7 +18,7 @@ import { config } from '../config/env.js'
 import { MOCK_ITEMS } from '../data/mockItems.js'
 import { ItemSchema } from '../schemas/item.js'
 
-const HEADERS = ['id', 'nombre', 'categoria', 'valor_arriendo', 'cantidad_total', 'disponibles', 'en_arriendo', 'imagen_url', 'fecha_creacion', 'activo']
+const HEADERS = ['id', 'nombre', 'categoria', 'subcategoria1', 'subcategoria2', 'valor_arriendo', 'cantidad_total', 'disponibles', 'en_arriendo', 'imagen_url', 'fecha_creacion', 'activo']
 const LOCAL_STORE = join(process.cwd(), 'server', 'data', 'items.local.json')
 const LOCAL_STORE_FALLBACK = join(process.cwd(), 'data', 'items.local.json')
 
@@ -23,11 +26,155 @@ let sheetsApi = null
 let cache = { at: 0, items: [] }
 let warnedFallback = false
 
+/* ───────────────────────── Utilidades de parseo ───────────────────────── */
+
+/** Normaliza un encabezado: minúsculas, sin acentos, sin espacios/guiones/underscore. */
+function normHeader(h) {
+  return String(h || '')
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .replace(/[\s\-_]+/g, '')
+    .trim()
+}
+
+/** Convierte "$25.000", "25.000", "25,000", "  18000  " → 18000 (entero). */
+function parseValor(v) {
+  if (v == null) return 0
+  const digits = String(v).replace(/[^\d]/g, '')
+  return digits ? Number.parseInt(digits, 10) : 0
+}
+
+/** Entero tolerante: "3" → 3, "" → 0, "N/A" → 0. */
+function parseIntSafe(v) {
+  if (v == null) return 0
+  const n = Number.parseInt(String(v).replace(/[^\d-]/g, ''), 10)
+  return Number.isFinite(n) ? n : 0
+}
+
+/** ¿'activo' verdadero? (por defecto true si la columna no existe). */
+function parseActivo(v) {
+  if (v == null || v === '') return true
+  return /^(true|1|si|s[ií]|yes|activo|disponible)$/i.test(String(v).trim())
+}
+
+/**
+ * Parser CSV robusto (RFC 4180): soporta comillas dobles, comas y saltos de
+ * línea dentro de campos entrecomillados. Devuelve array de arrays de strings.
+ */
+function parseCsv(text) {
+  const rows = []
+  let row = []
+  let field = ''
+  let inQuotes = false
+  const s = String(text).replace(/\r\n?/g, '\n') // normaliza CRLF/CR → LF
+
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i]
+    if (inQuotes) {
+      if (c === '"') {
+        if (s[i + 1] === '"') { field += '"'; i++ }       // comilla escapada ""
+        else inQuotes = false
+      } else {
+        field += c
+      }
+    } else if (c === '"') {
+      inQuotes = true
+    } else if (c === ',') {
+      row.push(field); field = ''
+    } else if (c === '\n') {
+      row.push(field); rows.push(row); row = []; field = ''
+    } else {
+      field += c
+    }
+  }
+  // Último campo/fila si el archivo no termina en newline.
+  if (field.length > 0 || row.length > 0) { row.push(field); rows.push(row) }
+  return rows
+}
+
+/**
+ * Mapea un registro crudo (objeto {headerNormalizado: valor}) a nuestro item.
+ * Tolerante: solo exige id o nombre; el resto se coacciona con defaults.
+ * Devuelve null si la fila está vacía.
+ */
+function mapRecord(rec) {
+  const get = (...keys) => {
+    for (const k of keys) {
+      if (rec[k] != null && String(rec[k]).trim() !== '') return String(rec[k]).trim()
+    }
+    return ''
+  }
+
+  const id = get('id')
+  const nombre = get('nombre')
+  if (!id && !nombre) return null // fila vacía
+
+  const total = parseIntSafe(get('total', 'cantidadtotal'))
+  const enArriendo = parseIntSafe(get('arriendo', 'enarriendo'))
+  const dispRaw = get('disponible', 'disponibles')
+  // Si no viene 'disponible', lo derivamos de total - arriendo.
+  const disponibles = dispRaw !== '' ? parseIntSafe(dispRaw) : Math.max(0, total - enArriendo)
+
+  return {
+    id: id || `IT-${Math.random().toString(36).slice(2, 9).toUpperCase()}`,
+    nombre: nombre || '(sin nombre)',
+    categoria: get('categorias', 'categoria') || 'Sin categoría',
+    subcategoria1: get('subcategoria1'),
+    subcategoria2: get('subcategoria2'),
+    valor_arriendo: parseValor(get('valor', 'valorarriendo')),
+    cantidad_total: total,
+    disponibles,
+    en_arriendo: enArriendo,
+    imagen_url: get('imagenurl', 'imagen', 'foto'),
+    fecha_creacion: get('fechacreacion', 'fecha'),
+    activo: parseActivo(rec['activo'] ?? rec['visible']),
+  }
+}
+
+/** Convierte filas [headers, ...body] en items mapeados (tolerante). */
+function rowsToItems(rows) {
+  if (!rows || rows.length < 2) return []
+  const headers = rows[0].map(normHeader)
+  const items = []
+  for (let r = 1; r < rows.length; r++) {
+    const rec = {}
+    headers.forEach((h, i) => { rec[h] = rows[r][i] })
+    const item = mapRecord(rec)
+    if (item) items.push(item)
+  }
+  return items
+}
+
+/* ───────────────────────── Modo public-csv ───────────────────────── */
+
+function publicCsvUrl() {
+  const { id, gid } = config.sheets
+  // /export?format=csv respeta permisos "cualquiera con el enlace: lector".
+  return `https://docs.google.com/spreadsheets/d/${id}/export?format=csv&gid=${encodeURIComponent(gid)}`
+}
+
+async function fetchFromPublicCsv() {
+  const res = await fetch(publicCsvUrl(), { redirect: 'follow' })
+  if (!res.ok) {
+    throw new Error(
+      `No se pudo leer la hoja pública (HTTP ${res.status}). ` +
+      `Verifica que esté compartida como "cualquiera con el enlace: lector".`,
+    )
+  }
+  const text = await res.text()
+  // Si Google devuelve HTML (login/permiso), no es CSV válido.
+  if (text.trimStart().startsWith('<')) {
+    throw new Error('La hoja no es pública. Compártela como "cualquiera con el enlace: lector".')
+  }
+  return rowsToItems(parseCsv(text))
+}
+
+/* ───────────────────────── Modo sheets-api ───────────────────────── */
+
 function loadCredentials() {
   if (config.sheets.serviceAccountJsonB64) {
-    return JSON.parse(
-      Buffer.from(config.sheets.serviceAccountJsonB64, 'base64').toString('utf8'),
-    )
+    return JSON.parse(Buffer.from(config.sheets.serviceAccountJsonB64, 'base64').toString('utf8'))
   }
   if (config.sheets.serviceAccountFile) {
     return JSON.parse(readFileSync(config.sheets.serviceAccountFile, 'utf8'))
@@ -47,6 +194,45 @@ function getClient() {
   return sheetsApi
 }
 
+async function fetchFromSheetsApi() {
+  const client = getClient()
+  if (!client) return []
+  const res = await client.spreadsheets.values.get({
+    spreadsheetId: config.sheets.id,
+    range: `${config.sheets.itemsSheetName}!A1:Z2000`,
+    valueRenderOption: 'UNFORMATTED_VALUE',
+  })
+  return rowsToItems(res.data.values || [])
+}
+
+function itemToRow(it) {
+  return [
+    it.id, it.nombre, it.categoria, it.subcategoria1 || '', it.subcategoria2 || '',
+    Number(it.valor_arriendo), Number(it.cantidad_total),
+    Number(it.disponibles), Number(it.en_arriendo),
+    it.imagen_url || '', it.fecha_creacion || '',
+    it.activo === false ? 'false' : 'true',
+  ]
+}
+
+async function writeAllToSheetsApi(items) {
+  const client = getClient()
+  if (!client) throw new Error('Sheets API no configurado')
+  const values = [HEADERS, ...items.map(itemToRow)]
+  await client.spreadsheets.values.update({
+    spreadsheetId: config.sheets.id,
+    range: `${config.sheets.itemsSheetName}!A1:L${values.length}`,
+    valueInputOption: 'RAW',
+    requestBody: { values },
+  })
+  await client.spreadsheets.values.clear({
+    spreadsheetId: config.sheets.id,
+    range: `${config.sheets.itemsSheetName}!A${values.length + 1}:L2000`,
+  }).catch(() => {})
+}
+
+/* ───────────────────────── Modo local ───────────────────────── */
+
 function localPath() {
   const p = existsSync(dirname(LOCAL_STORE)) ? LOCAL_STORE : LOCAL_STORE_FALLBACK
   mkdirSync(dirname(p), { recursive: true })
@@ -56,103 +242,47 @@ function localPath() {
 function readLocalItems() {
   const p = localPath()
   if (!existsSync(p)) {
-    // Seed inicial con el mock la primera vez.
     writeFileSync(p, JSON.stringify(MOCK_ITEMS, null, 2))
     return [...MOCK_ITEMS]
   }
-  try {
-    return JSON.parse(readFileSync(p, 'utf8'))
-  } catch {
-    return [...MOCK_ITEMS]
-  }
+  try { return JSON.parse(readFileSync(p, 'utf8')) } catch { return [...MOCK_ITEMS] }
 }
 
 function writeLocalItems(items) {
   writeFileSync(localPath(), JSON.stringify(items, null, 2))
 }
 
-/**
- * Convierte una fila cruda (array de celdas) en un item validado.
- * Filas inválidas se descartan con un warn.
- */
-function rowToItem(row, headers) {
-  const raw = Object.fromEntries(headers.map((h, i) => [h, row[i] ?? '']))
-  const shaped = {
-    id: String(raw.id ?? '').trim(),
-    nombre: String(raw.nombre ?? '').trim(),
-    categoria: String(raw.categoria ?? '').trim(),
-    valor_arriendo: Number(raw.valor_arriendo) || 0,
-    cantidad_total: Number(raw.cantidad_total) || 0,
-    disponibles: Number(raw.disponibles) || 0,
-    en_arriendo: Number(raw.en_arriendo) || 0,
-    imagen_url: String(raw.imagen_url ?? '').trim(),
-    fecha_creacion: String(raw.fecha_creacion ?? '').trim(),
-    activo: raw.activo == null || raw.activo === '' ? true : /^(true|1|si|sí|yes)$/i.test(String(raw.activo)),
-  }
-  const parsed = ItemSchema.safeParse(shaped)
-  if (!parsed.success) {
-    console.warn(`[sheets] fila descartada id=${shaped.id}: ${parsed.error.issues.map((i) => i.message).join('; ')}`)
-    return null
-  }
-  return parsed.data
-}
-
-function itemToRow(it) {
-  return [
-    it.id, it.nombre, it.categoria,
-    Number(it.valor_arriendo), Number(it.cantidad_total),
-    Number(it.disponibles), Number(it.en_arriendo),
-    it.imagen_url || '', it.fecha_creacion || '',
-    it.activo === false ? 'false' : 'true',
-  ]
-}
-
-async function fetchAllFromSheets() {
-  const client = getClient()
-  if (!client) return null
-  const res = await client.spreadsheets.values.get({
-    spreadsheetId: config.sheets.id,
-    range: `${config.sheets.itemsSheetName}!A1:Z1000`,
-    valueRenderOption: 'UNFORMATTED_VALUE',
-  })
-  const rows = res.data.values || []
-  if (rows.length < 2) return []
-  const [headers, ...body] = rows
-  const norm = headers.map((h) => String(h).trim().toLowerCase())
-  return body.map((r) => rowToItem(r, norm)).filter(Boolean)
-}
-
-async function writeAllToSheets(items) {
-  const client = getClient()
-  if (!client) throw new Error('Sheets not configured')
-  const values = [HEADERS, ...items.map(itemToRow)]
-  await client.spreadsheets.values.update({
-    spreadsheetId: config.sheets.id,
-    range: `${config.sheets.itemsSheetName}!A1:J${values.length}`,
-    valueInputOption: 'RAW',
-    requestBody: { values },
-  })
-  // Limpia filas sobrantes.
-  await client.spreadsheets.values.clear({
-    spreadsheetId: config.sheets.id,
-    range: `${config.sheets.itemsSheetName}!A${values.length + 1}:J1000`,
-  }).catch(() => {})
-}
+/* ───────────────────────── Dispatch por modo ───────────────────────── */
 
 async function readAllRaw() {
-  if (config.sheetsEnabled) {
-    const items = await fetchAllFromSheets()
-    return items ?? []
+  switch (config.sheetsMode) {
+    case 'sheets-api': return fetchFromSheetsApi()
+    case 'public-csv': return fetchFromPublicCsv()
+    default:           return readLocalItems()
   }
-  return readLocalItems()
 }
 
 async function writeAllRaw(items) {
-  if (config.sheetsEnabled) return writeAllToSheets(items)
-  return writeLocalItems(items)
+  switch (config.sheetsMode) {
+    case 'sheets-api':
+      return writeAllToSheetsApi(items)
+    case 'public-csv': {
+      const e = new Error(
+        'La hoja está en modo solo-lectura (CSV público). Para editar el inventario ' +
+        'desde el panel necesitas configurar una service account con permiso de edición ' +
+        '(ver docs/GOOGLE_SHEETS_SETUP.md).',
+      )
+      e.status = 400
+      throw e
+    }
+    default:
+      return writeLocalItems(items)
+  }
 }
 
-/** Público: devuelve items visibles (respetando `activo`) usando caché. */
+/* ───────────────────────── API pública del módulo ───────────────────────── */
+
+/** Devuelve items visibles (respetando `activo`) usando caché. */
 export async function getItems({ includeInactive = false } = {}) {
   const now = Date.now()
   const ttlMs = config.sheets.cacheTtlSec * 1000
@@ -160,10 +290,8 @@ export async function getItems({ includeInactive = false } = {}) {
     return includeInactive ? cache.items : cache.items.filter((i) => i.activo)
   }
 
-  if (!config.sheetsEnabled && config.logSheetsFallback && !warnedFallback) {
-    console.warn(
-      '[sheets] Google Sheets no configurado. Sirviendo datos MOCK/JSON local para desarrollo.',
-    )
+  if (config.sheetsMode === 'local' && config.logSheetsFallback && !warnedFallback) {
+    console.warn('[sheets] Sin GOOGLE_SHEETS_ID. Sirviendo datos MOCK/JSON local para desarrollo.')
     warnedFallback = true
   }
 
@@ -171,7 +299,7 @@ export async function getItems({ includeInactive = false } = {}) {
     const items = await readAllRaw()
     cache = { at: now, items }
   } catch (err) {
-    console.error('[sheets] error consultando Sheets, uso caché previa si existe:', err.message)
+    console.error('[sheets] error leyendo datos, uso caché previa si existe:', err.message)
     if (cache.items.length === 0) throw err
   }
   return includeInactive ? cache.items : cache.items.filter((i) => i.activo)
@@ -182,45 +310,36 @@ export function invalidateItemsCache() {
   cache = { at: 0, items: [] }
 }
 
-/** Crea un item (id se genera si no viene). Devuelve el item creado. */
 export async function createItem(input) {
   const all = await readAllRaw()
   const id = `IT-${Date.now().toString(36).toUpperCase()}`
-  const item = {
+  const parsed = ItemSchema.parse({
     id,
     fecha_creacion: new Date().toISOString().slice(0, 10),
     activo: true,
     ...input,
-  }
-  const parsed = ItemSchema.parse(item)
+  })
   all.push(parsed)
   await writeAllRaw(all)
   invalidateItemsCache()
   return parsed
 }
 
-/** Actualiza un item existente. Devuelve el nuevo estado. */
 export async function updateItem(id, patch) {
   const all = await readAllRaw()
   const idx = all.findIndex((i) => i.id === id)
-  if (idx === -1) {
-    const e = new Error('Item no encontrado'); e.status = 404; throw e
-  }
-  const merged = { ...all[idx], ...patch, id: all[idx].id }
-  const parsed = ItemSchema.parse(merged)
+  if (idx === -1) { const e = new Error('Item no encontrado'); e.status = 404; throw e }
+  const parsed = ItemSchema.parse({ ...all[idx], ...patch, id: all[idx].id })
   all[idx] = parsed
   await writeAllRaw(all)
   invalidateItemsCache()
   return parsed
 }
 
-/** Elimina un item por id. Devuelve el item eliminado. */
 export async function deleteItem(id) {
   const all = await readAllRaw()
   const idx = all.findIndex((i) => i.id === id)
-  if (idx === -1) {
-    const e = new Error('Item no encontrado'); e.status = 404; throw e
-  }
+  if (idx === -1) { const e = new Error('Item no encontrado'); e.status = 404; throw e }
   const [removed] = all.splice(idx, 1)
   await writeAllRaw(all)
   invalidateItemsCache()

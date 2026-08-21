@@ -12,8 +12,10 @@ import Fuse from 'fuse.js'
  */
 const FUSE_OPTIONS = {
   keys: [
-    { name: 'nombre',    weight: 0.7 },
-    { name: 'categoria', weight: 0.3 },
+    { name: 'nombre',        weight: 0.6 },
+    { name: 'categoria',     weight: 0.2 },
+    { name: 'subcategoria1', weight: 0.1 },
+    { name: 'subcategoria2', weight: 0.1 },
   ],
   threshold: 0.35, // 0 = exacto, 1 = todo pasa
   ignoreLocation: true,
@@ -46,7 +48,9 @@ export function useCatalogSearch(items, query, category) {
     const exact = out.filter(
       (it) =>
         normalize(it.nombre).includes(q) ||
-        normalize(it.categoria).includes(q),
+        normalize(it.categoria).includes(q) ||
+        normalize(it.subcategoria1).includes(q) ||
+        normalize(it.subcategoria2).includes(q),
     )
     if (exact.length > 0) return exact
 

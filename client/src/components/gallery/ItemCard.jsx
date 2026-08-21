@@ -42,6 +42,15 @@ export default function ItemCard({ item }) {
           </h3>
         </div>
         <p className="text-xs uppercase tracking-wider text-brand-400">{item.categoria}</p>
+        {(item.subcategoria1 || item.subcategoria2) && (
+          <div className="flex flex-wrap gap-1">
+            {[item.subcategoria1, item.subcategoria2].filter(Boolean).map((s) => (
+              <span key={s} className="rounded-full bg-ink-800 px-2 py-0.5 text-[11px] text-ink-300">
+                {s}
+              </span>
+            ))}
+          </div>
+        )}
         <div className="flex items-baseline justify-between pt-2">
           <span className="text-lg font-bold text-ink-50">{formatCLP(item.valor_arriendo)}</span>
           <span className="text-xs text-ink-400">/ arriendo</span>
