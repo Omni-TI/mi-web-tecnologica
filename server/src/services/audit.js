@@ -21,7 +21,8 @@ const LOCAL_LOG_FALLBACK = join(process.cwd(), 'data', 'audit.local.log')
 
 let sheetsApi = null
 function getSheetsClient() {
-  if (sheetsApi || !config.sheetsEnabled) return sheetsApi
+  // Auditoría solo va a Sheets si hay ESCRITURA (service account); si no, log local.
+  if (sheetsApi || !config.sheetsCanWrite) return sheetsApi
   const creds = config.sheets.serviceAccountJsonB64
     ? JSON.parse(Buffer.from(config.sheets.serviceAccountJsonB64, 'base64').toString('utf8'))
     : JSON.parse(readFileSync(config.sheets.serviceAccountFile, 'utf8'))

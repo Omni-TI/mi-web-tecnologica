@@ -56,7 +56,9 @@ function writeLocal(users) {
 
 function getSheetsClient() {
   if (sheetsApi) return sheetsApi
-  if (!config.sheetsEnabled) return null
+  // Los usuarios solo se guardan en Sheets si tenemos ESCRITURA (service account).
+  // En modo CSV público o local, se usa el JSON local.
+  if (!config.sheetsCanWrite) return null
   const creds = config.sheets.serviceAccountJsonB64
     ? JSON.parse(Buffer.from(config.sheets.serviceAccountJsonB64, 'base64').toString('utf8'))
     : JSON.parse(readFileSync(config.sheets.serviceAccountFile, 'utf8'))
@@ -149,5 +151,5 @@ export async function updateUserAttempts(username, { failed_attempts, locked_unt
 }
 
 export function usersBackend() {
-  return config.sheetsEnabled ? 'sheets' : 'local-json'
+  return config.sheetsCanWrite ? 'sheets' : 'local-json'
 }
