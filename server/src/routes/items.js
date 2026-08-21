@@ -46,7 +46,10 @@ router.post('/', requireAuth, validateBody(ItemCreateSchema), async (req, res, n
       ip: req.ip,
     })
     res.status(201).json(created)
-  } catch (err) { next(err) }
+  } catch (err) {
+    if (err.status) return res.status(err.status).json({ error: err.message })
+    next(err)
+  }
 })
 
 router.patch('/:id', requireAuth, validateBody(ItemUpdateSchema), async (req, res, next) => {

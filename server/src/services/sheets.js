@@ -194,41 +194,135 @@ function getClient() {
   return sheetsApi
 }
 
+/**
+ * Resuelve el nombre real de la pestaña: si SHEETS_ITEMS_TAB existe, la usa;
+ * si no, cae a la primera pestaña de la hoja (robusto ante nombres en español).
+ */
+let resolvedTab = null
+async function getTabName(client) {
+  if (resolvedTab) return resolvedTab
+  const meta = await client.spreadsheets.get({
+    spreadsheetId: config.sheets.id,
+    fields: 'sheets.properties.title',
+  })
+  const titles = (meta.data.sheets || []).map((s) => s.properties.title)
+  const want = config.sheets.itemsSheetName
+  resolvedTab = titles.includes(want) ? want : (titles[0] || want)
+  return resolvedTab
+}
+
 async function fetchFromSheetsApi() {
   const client = getClient()
   if (!client) return []
+  const tab = await getTabName(client)
   const res = await client.spreadsheets.values.get({
     spreadsheetId: config.sheets.id,
-    range: `${config.sheets.itemsSheetName}!A1:Z2000`,
+    range: `${tab}!A1:Z5000`,
     valueRenderOption: 'UNFORMATTED_VALUE',
   })
   return rowsToItems(res.data.values || [])
 }
 
-function itemToRow(it) {
-  return [
-    it.id, it.nombre, it.categoria, it.subcategoria1 || '', it.subcategoria2 || '',
-    Number(it.valor_arriendo), Number(it.cantidad_total),
-    Number(it.disponibles), Number(it.en_arriendo),
-    it.imagen_url || '', it.fecha_creacion || '',
-    it.activo === false ? 'false' : 'true',
-  ]
+/**
+ * Mapeo inverso campo interno → nombres de columna (normalizados) que lo
+ * representan en la hoja del cliente. Permite escribir de vuelta respetando
+ * el orden y los nombres de columna EXISTENTES en la hoja.
+ */
+const FIELD_TO_HEADERS = {
+  id: ['id'],
+  nombre: ['nombre'],
+  categoria: ['categorias', 'categoria'],
+  subcategoria1: ['subcategoria1'],
+  subcategoria2: ['subcategoria2'],
+  valor_arriendo: ['valor', 'valorarriendo'],
+  cantidad_total: ['total', 'cantidadtotal'],
+  disponibles: ['disponible', 'disponibles'],
+  en_arriendo: ['arriendo', 'enarriendo'],
+  imagen_url: ['imagenurl', 'imagen', 'foto'],
+  fecha_creacion: ['fechacreacion', 'fecha'],
+  activo: ['activo', 'visible'],
+}
+
+function fieldForHeader(normalized) {
+  for (const [field, names] of Object.entries(FIELD_TO_HEADERS)) {
+    if (names.includes(normalized)) return field
+  }
+  return null
+}
+
+/** Índice de columna (1) → letra ("A", "Z", "AA", ...). */
+function colLetter(n) {
+  let s = ''
+  while (n > 0) { const m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = Math.floor((n - 1) / 26) }
+  return s || 'A'
+}
+
+function valueForField(it, field) {
+  switch (field) {
+    case 'valor_arriendo':
+    case 'cantidad_total':
+    case 'disponibles':
+    case 'en_arriendo':
+      return Number(it[field] ?? 0)
+    case 'activo':
+      return it.activo === false ? 'FALSE' : 'TRUE'
+    default:
+      return it[field] ?? ''
+  }
 }
 
 async function writeAllToSheetsApi(items) {
   const client = getClient()
   if (!client) throw new Error('Sheets API no configurado')
-  const values = [HEADERS, ...items.map(itemToRow)]
-  await client.spreadsheets.values.update({
+  const tab = await getTabName(client)
+
+  // 1. Lee la fila de encabezados actual para PRESERVAR las columnas del cliente.
+  const headRes = await client.spreadsheets.values.get({
     spreadsheetId: config.sheets.id,
-    range: `${config.sheets.itemsSheetName}!A1:L${values.length}`,
-    valueInputOption: 'RAW',
-    requestBody: { values },
+    range: `${tab}!1:1`,
   })
+  let headerRow = (headRes.data.values && headRes.data.values[0]) || []
+  // Si la hoja está vacía (sin encabezados), crea los nuestros por defecto.
+  if (headerRow.length === 0) headerRow = HEADERS
+  const normalized = headerRow.map(normHeader)
+
+  // 2. Cada item → fila alineada a las columnas EXISTENTES (mismo orden).
+  const dataRows = items.map((it) =>
+    normalized.map((h) => {
+      const field = fieldForHeader(h)
+      return field ? valueForField(it, field) : ''
+    }),
+  )
+
+  const lastCol = colLetter(headerRow.length)
+
+  // 3. Si la hoja estaba vacía, escribe también los encabezados en la fila 1.
+  if ((headRes.data.values || []).length === 0) {
+    await client.spreadsheets.values.update({
+      spreadsheetId: config.sheets.id,
+      range: `${tab}!A1:${lastCol}1`,
+      valueInputOption: 'RAW',
+      requestBody: { values: [headerRow] },
+    })
+  }
+
+  // 4. Escribe los datos desde la fila 2 (NO toca la fila de encabezados del cliente).
+  if (dataRows.length > 0) {
+    await client.spreadsheets.values.update({
+      spreadsheetId: config.sheets.id,
+      range: `${tab}!A2:${lastCol}${dataRows.length + 1}`,
+      valueInputOption: 'RAW',
+      requestBody: { values: dataRows },
+    })
+  }
+
+  // 5. Limpia filas sobrantes debajo de los datos.
   await client.spreadsheets.values.clear({
     spreadsheetId: config.sheets.id,
-    range: `${config.sheets.itemsSheetName}!A${values.length + 1}:L2000`,
+    range: `${tab}!A${dataRows.length + 2}:${lastCol}100000`,
   }).catch(() => {})
+
+  invalidateItemsCache()
 }
 
 /* ───────────────────────── Modo local ───────────────────────── */
