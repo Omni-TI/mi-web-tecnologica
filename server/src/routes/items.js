@@ -15,7 +15,15 @@ router.get('/', async (_req, res, next) => {
   try {
     const items = await getItems()
     res.set('Cache-Control', `public, max-age=${config.sheets.cacheTtlSec}`)
-    res.json({ source: config.sheetsEnabled ? 'sheets' : 'mock', count: items.length, items })
+    res.json({
+      source: config.sheetsEnabled ? 'sheets' : 'mock',
+      canWrite: config.sheetsCanWrite,
+      sheetUrl: config.sheets.id
+        ? `https://docs.google.com/spreadsheets/d/${config.sheets.id}/edit`
+        : '',
+      count: items.length,
+      items,
+    })
   } catch (err) { next(err) }
 })
 

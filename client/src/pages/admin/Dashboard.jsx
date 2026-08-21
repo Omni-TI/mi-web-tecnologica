@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Plus, Pencil, Trash2, RotateCw } from 'lucide-react'
+import { Plus, Pencil, Trash2, RotateCw, Lock, ExternalLink } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { api } from '../../lib/api.js'
@@ -16,6 +16,8 @@ import ItemFormModal from '../../components/admin/ItemFormModal.jsx'
 export default function Dashboard() {
   const [items, setItems] = useState([])
   const [source, setSource] = useState(null)
+  const [canWrite, setCanWrite] = useState(true)
+  const [sheetUrl, setSheetUrl] = useState('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [toDelete, setToDelete] = useState(null)
@@ -29,6 +31,8 @@ export default function Dashboard() {
       .then((res) => {
         setItems(res.items ?? [])
         setSource(res.source)
+        setCanWrite(res.canWrite !== false)
+        setSheetUrl(res.sheetUrl || '')
         setError(null)
       })
       .catch((err) => {
@@ -119,10 +123,30 @@ export default function Dashboard() {
             </span>
           )}
         </div>
-        <button className="btn-primary" onClick={() => { setCreating(true); setToEdit(null) }}>
-          <Plus className="h-4 w-4" /> Nuevo artículo
-        </button>
+        {canWrite && (
+          <button className="btn-primary" onClick={() => { setCreating(true); setToEdit(null) }}>
+            <Plus className="h-4 w-4" /> Nuevo artículo
+          </button>
+        )}
       </div>
+
+      {!loading && !canWrite && (
+        <div className="mt-4 flex flex-col gap-2 rounded-xl border border-brand-500/40 bg-brand-600/10 p-4 text-sm sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-2 text-brand-100">
+            <Lock className="mt-0.5 h-4 w-4 shrink-0 text-brand-400" />
+            <span>
+              <strong>Modo solo-lectura.</strong> El inventario se muestra desde tu Google Sheet.
+              Para agregar, editar o eliminar artículos, hazlo directamente en la hoja —
+              el catálogo se actualiza automáticamente en unos segundos.
+            </span>
+          </div>
+          {sheetUrl && (
+            <a href={sheetUrl} target="_blank" rel="noopener noreferrer" className="btn-outline shrink-0">
+              <ExternalLink className="h-4 w-4" /> Abrir hoja
+            </a>
+          )}
+        </div>
+      )}
 
       {loading ? (
         <div className="mt-3"><LoadingGrid count={3} /></div>
@@ -138,7 +162,7 @@ export default function Dashboard() {
                 <th className="px-4 py-3 text-right">Total</th>
                 <th className="px-4 py-3 text-right">Disp.</th>
                 <th className="px-4 py-3 text-right">Arr.</th>
-                <th className="px-4 py-3 text-right">Acciones</th>
+                {canWrite && <th className="px-4 py-3 text-right">Acciones</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-ink-800 bg-ink-900/30">
@@ -155,24 +179,26 @@ export default function Dashboard() {
                   <td className="px-4 py-3 text-right">{it.cantidad_total}</td>
                   <td className="px-4 py-3 text-right text-emerald-300">{it.disponibles}</td>
                   <td className="px-4 py-3 text-right text-yellow-300">{it.en_arriendo}</td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center justify-end gap-1">
-                      <button className="btn-ghost px-2 py-1" onClick={() => toggleRent(it)}
-                              aria-label={`Alternar arriendo de ${it.nombre}`}
-                              title="Marcar 1 unidad como arrendada/disponible">
-                        <RotateCw className="h-4 w-4" />
-                      </button>
-                      <button className="btn-ghost px-2 py-1" onClick={() => { setToEdit(it); setCreating(false) }}
-                              aria-label={`Editar ${it.nombre}`}>
-                        <Pencil className="h-4 w-4" />
-                      </button>
-                      <button className="btn-ghost px-2 py-1 text-red-400 hover:text-red-300"
-                              onClick={() => setToDelete(it)}
-                              aria-label={`Eliminar ${it.nombre}`}>
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </div>
-                  </td>
+                  {canWrite && (
+                    <td className="px-4 py-3">
+                      <div className="flex items-center justify-end gap-1">
+                        <button className="btn-ghost px-2 py-1" onClick={() => toggleRent(it)}
+                                aria-label={`Alternar arriendo de ${it.nombre}`}
+                                title="Marcar 1 unidad como arrendada/disponible">
+                          <RotateCw className="h-4 w-4" />
+                        </button>
+                        <button className="btn-ghost px-2 py-1" onClick={() => { setToEdit(it); setCreating(false) }}
+                                aria-label={`Editar ${it.nombre}`}>
+                          <Pencil className="h-4 w-4" />
+                        </button>
+                        <button className="btn-ghost px-2 py-1 text-red-400 hover:text-red-300"
+                                onClick={() => setToDelete(it)}
+                                aria-label={`Eliminar ${it.nombre}`}>
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>
