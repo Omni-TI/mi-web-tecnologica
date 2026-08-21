@@ -1,71 +1,90 @@
-# Configuración de Google Sheets como base de datos
+# Configuración de Google Sheets con ESCRITURA (service account)
 
-> Esta guía se completará en **Fase 2**. Aquí queda documentado el flujo
-> planificado para que sepas qué preparar.
+Con esto, el panel `/admin` puede **crear, editar y eliminar** artículos y esos
+cambios se guardan **directamente en tu Google Sheet**.
 
-## 1. Crear proyecto en Google Cloud Console
+> ¿Por qué una service account? Un link "editor" deja editar a una persona en el
+> navegador, pero NO permite que el servidor de la app escriba. Google exige que
+> el servidor tenga su propia identidad autenticada: eso es la service account
+> (un "email de robot" al que le das permiso de editor en tu hoja).
 
-1. Ve a [console.cloud.google.com](https://console.cloud.google.com/).
-2. **Nuevo proyecto** → nombre `siete-rayos`.
-3. Selecciónalo como proyecto activo.
+Los **usuarios admin** y el **log de auditoría** NO se guardan en tu hoja de
+inventario: viven en archivos locales del servidor. Tu hoja es solo el catálogo.
+
+---
+
+## 1. Crear proyecto en Google Cloud
+
+1. Entra a [console.cloud.google.com](https://console.cloud.google.com/) con tu cuenta de Google.
+2. Barra superior → selector de proyecto → **Proyecto nuevo** → nombre `siete-rayos` → **Crear**.
+3. Asegúrate de tenerlo seleccionado como proyecto activo.
 
 ## 2. Habilitar Google Sheets API
 
-1. Menú → **APIs y servicios → Biblioteca**.
-2. Busca **Google Sheets API** y pulsa **Habilitar**.
+1. En el buscador superior escribe **Google Sheets API** → ábrela → **Habilitar**.
+   (O menú ☰ → **APIs y servicios → Biblioteca** → busca → **Habilitar**.)
 
-## 3. Crear una service account
+## 3. Crear la service account y su clave
 
-1. Menú → **IAM y administración → Cuentas de servicio → Crear cuenta**.
-2. Nombre: `sieterayos-backend`.
-3. Rol: **ninguno** (el acceso se otorga compartiendo la hoja).
-4. Termina la creación → abre la cuenta → pestaña **Claves** → **Añadir clave → JSON**.
-5. Guarda el JSON como `server/secrets/service-account.json`. **Nunca** lo subas al repo (`.gitignore` ya lo excluye).
+1. Menú ☰ → **APIs y servicios → Credenciales**.
+2. **+ Crear credenciales → Cuenta de servicio**.
+3. Nombre: `sieterayos-bot` → **Crear y continuar** → (sin roles) **Continuar** → **Listo**.
+4. Abre la cuenta recién creada → pestaña **Claves** → **Agregar clave → Crear clave nueva → JSON** → **Crear**.
+5. Se descarga un archivo `.json`. Guárdalo bien: son las credenciales del robot.
 
-## 4. Crear la hoja de cálculo
+## 4. Compartir tu hoja con el robot
 
-Crea una hoja llamada **Siete Rayos DB** con estas pestañas:
+1. Abre el JSON descargado y copia el valor de `client_email`
+   (algo como `sieterayos-bot@siete-rayos-xxxxx.iam.gserviceaccount.com`).
+2. En tu Google Sheet → botón **Compartir** → pega ese email → rol **Editor** →
+   (desmarca "Notificar") → **Enviar / Compartir**.
 
-### Pestaña `items`
+## 5. Poner la credencial en el proyecto
 
-| id | nombre | categoria | valor_arriendo | cantidad_total | disponibles | en_arriendo | imagen_url | fecha_creacion | activo |
-|----|--------|-----------|----------------|----------------|-------------|-------------|------------|----------------|--------|
+1. En tu proyecto crea la carpeta `server\secrets`.
+2. Copia el JSON ahí y renómbralo a `service-account.json`
+   (ruta final: `server\secrets\service-account.json`).
+   *Nunca lo subas a Git — el `.gitignore` ya lo excluye.*
 
-### Pestaña `users`
+## 6. Configurar `server\.env`
 
-| id | username | password_hash | role | failed_attempts | locked_until | created_at |
-|----|----------|---------------|------|-----------------|--------------|------------|
-
-### Pestaña `audit_log`
-
-| timestamp | user | action | entity_id | changes_json | ip |
-|-----------|------|--------|-----------|--------------|----|
-
-### Pestaña `categorias` (opcional)
-
-| nombre | color |
-|--------|-------|
-
-## 5. Compartir la hoja con la service account
-
-1. Copia el `client_email` del JSON descargado (algo como `sieterayos-backend@…iam.gserviceaccount.com`).
-2. En la hoja: **Compartir → añade ese email con permiso Editor**.
-
-## 6. Variables de entorno
-
-Copia el ID de la hoja (el segmento entre `/d/` y `/edit` en la URL) a `server/.env`:
+Edita `server\.env` y deja estas líneas así (el ID de tu hoja ya viene puesto):
 
 ```
-GOOGLE_SHEETS_ID=1AbC...xyZ
+GOOGLE_SHEETS_ID=1gtDZbyLpoUCb8BUCYKWVB_QN2RambooTc4tv9a1z4w0
 GOOGLE_SERVICE_ACCOUNT_FILE=./secrets/service-account.json
 ```
 
-## 7. (Producción) Credencial en base64
+Deja `GOOGLE_SERVICE_ACCOUNT_JSON_B64` vacío.
 
-Para plataformas que no permiten subir archivos, codifica el JSON:
+## 7. Reiniciar y verificar
 
-```bash
-base64 -w0 secrets/service-account.json
+```powershell
+npm run dev
 ```
 
-y guárdalo en `GOOGLE_SERVICE_ACCOUNT_JSON_B64`. El backend lo decodificará al iniciar.
+Comprueba en el navegador: `http://localhost:4000/api/health`
+Debe mostrar `"sheetsEnabled": true`. En `/admin` reaparecen los botones de
+crear/editar/eliminar, y los cambios se escriben en tu hoja.
+
+---
+
+## Notas importantes
+
+- **Tus columnas se respetan.** La app lee la fila 1 de tu hoja como encabezados
+  (`categorias`, `sub-categoria1`, `sub-categoria2`, `nombre`, `valor`, `id`,
+  `Total`, `arriendo`, `disponible`) y escribe de vuelta en esas mismas columnas,
+  en el mismo orden. No las renombra ni las reordena.
+- Los datos deben empezar en la **fila 2** (fila 1 = encabezados).
+- Al editar, el `valor` se guarda como número simple (p. ej. `35000`).
+- Los campos que la app maneja pero tu hoja no tiene como columna
+  (imagen, fecha) simplemente no se escriben; no pasa nada.
+
+## Producción (opcional)
+
+En plataformas que no permiten subir archivos (Railway, etc.), convierte el JSON
+a base64 y ponlo en `GOOGLE_SERVICE_ACCOUNT_JSON_B64` en vez del archivo:
+
+```bash
+base64 -w0 server/secrets/service-account.json
+```

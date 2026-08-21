@@ -19,19 +19,10 @@ const SHEET_READ_RANGE = `${SHEET_TAB}!A1:F1000`
 const LOCAL_LOG = join(process.cwd(), 'server', 'data', 'audit.local.log')
 const LOCAL_LOG_FALLBACK = join(process.cwd(), 'data', 'audit.local.log')
 
-let sheetsApi = null
 function getSheetsClient() {
-  // Auditoría solo va a Sheets si hay ESCRITURA (service account); si no, log local.
-  if (sheetsApi || !config.sheetsCanWrite) return sheetsApi
-  const creds = config.sheets.serviceAccountJsonB64
-    ? JSON.parse(Buffer.from(config.sheets.serviceAccountJsonB64, 'base64').toString('utf8'))
-    : JSON.parse(readFileSync(config.sheets.serviceAccountFile, 'utf8'))
-  const auth = new google.auth.GoogleAuth({
-    credentials: creds,
-    scopes: ['https://www.googleapis.com/auth/spreadsheets'],
-  })
-  sheetsApi = google.sheets({ version: 'v4', auth })
-  return sheetsApi
+  // La auditoría es un registro INTERNO de la app; no se escribe en la hoja de
+  // inventario del cliente. Siempre va al log local (server/data/audit.local.log).
+  return null
 }
 
 function localLogPath() {

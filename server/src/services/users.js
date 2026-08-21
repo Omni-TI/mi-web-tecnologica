@@ -55,19 +55,11 @@ function writeLocal(users) {
 }
 
 function getSheetsClient() {
-  if (sheetsApi) return sheetsApi
-  // Los usuarios solo se guardan en Sheets si tenemos ESCRITURA (service account).
-  // En modo CSV público o local, se usa el JSON local.
-  if (!config.sheetsCanWrite) return null
-  const creds = config.sheets.serviceAccountJsonB64
-    ? JSON.parse(Buffer.from(config.sheets.serviceAccountJsonB64, 'base64').toString('utf8'))
-    : JSON.parse(readFileSync(config.sheets.serviceAccountFile, 'utf8'))
-  const auth = new google.auth.GoogleAuth({
-    credentials: creds,
-    scopes: ['https://www.googleapis.com/auth/spreadsheets'],
-  })
-  sheetsApi = google.sheets({ version: 'v4', auth })
-  return sheetsApi
+  // Los usuarios admin son datos INTERNOS de la app y NO se guardan en la hoja
+  // de inventario del cliente. Siempre se almacenan en JSON local
+  // (server/data/users.local.json). Esto desacopla las credenciales del
+  // catálogo y evita exigir una pestaña `users` en la hoja del cliente.
+  return null
 }
 
 async function readAll() {
@@ -151,5 +143,5 @@ export async function updateUserAttempts(username, { failed_attempts, locked_unt
 }
 
 export function usersBackend() {
-  return config.sheetsCanWrite ? 'sheets' : 'local-json'
+  return 'local-json'
 }
