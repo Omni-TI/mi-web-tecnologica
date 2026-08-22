@@ -1,10 +1,10 @@
 import { Router } from 'express'
 
 import { config } from '../config/env.js'
-import { getItems, createItem, updateItem, deleteItem } from '../services/sheets.js'
+import { getItems, createItem, updateItem, deleteItem, setDisponibles } from '../services/sheets.js'
 import { requireAuth } from '../middleware/auth.js'
 import { validateBody } from '../middleware/validate.js'
-import { ItemCreateSchema, ItemUpdateSchema } from '../schemas/item.js'
+import { ItemCreateSchema, ItemUpdateSchema, DisponiblesSchema } from '../schemas/item.js'
 import { audit } from '../services/audit.js'
 
 const router = Router()
@@ -68,6 +68,27 @@ router.patch('/:id', requireAuth, validateBody(ItemUpdateSchema), async (req, re
       action: 'item.update',
       entityId: updated.id,
       changes: req.body,
+      ip: req.ip,
+    })
+    res.json(updated)
+  } catch (err) {
+    if (err.status) return res.status(err.status).json({ error: err.message })
+    next(err)
+  }
+})
+
+/**
+ * Ajuste puntual de unidades disponibles (control +/- del panel).
+ * Escritura mínima: solo la celda de disponibles. Protegido por auth admin.
+ */
+router.patch('/:id/disponibles', requireAuth, validateBody(DisponiblesSchema), async (req, res, next) => {
+  try {
+    const updated = await setDisponibles(req.params.id, req.body.disponibles)
+    await audit({
+      user: req.user.username,
+      action: 'item.disponibles',
+      entityId: updated.id,
+      changes: { disponibles: updated.disponibles },
       ip: req.ip,
     })
     res.json(updated)

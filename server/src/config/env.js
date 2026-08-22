@@ -43,9 +43,13 @@ export const config = {
     return this.sheetsMode !== 'local'
   },
 
-  /** ¿Podemos escribir de vuelta a la hoja? Solo con service account. */
+  /**
+   * ¿Podemos escribir el inventario desde el panel?
+   * Sí con service account (sheets-api) y en modo local (JSON de dev).
+   * No en modo public-csv: un link "lector" no permite escribir en la hoja.
+   */
   get sheetsCanWrite() {
-    return this.sheetsMode === 'sheets-api'
+    return this.sheetsMode !== 'public-csv'
   },
 
   auth: {

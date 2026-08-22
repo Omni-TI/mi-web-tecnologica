@@ -1,29 +1,39 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Plus, Pencil, Trash2, RotateCw, Lock, ExternalLink } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Minus, Plus, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { api } from '../../lib/api.js'
 import { formatCLP } from '../../lib/format.js'
 import LoadingGrid from '../../components/ui/LoadingGrid.jsx'
 import ErrorPanel from '../../components/ui/ErrorPanel.jsx'
-import ConfirmDeleteModal from '../../components/admin/ConfirmDeleteModal.jsx'
-import ItemFormModal from '../../components/admin/ItemFormModal.jsx'
 
 /**
- * Panel admin — Fase 3.
- * CRUD real contra /api/items. Cada acción muestra toast y actualiza estado local.
+ * Panel admin.
+ * - Inventario leído desde Google Sheets.
+ * - Ajuste en vivo de unidades disponibles (+/-) sincronizado con la hoja:
+ *   actualización optimista, debounce/cola por artículo, reversión ante error.
+ *
+ * La escritura solo persiste en modo service account (canWrite === true);
+ * en modo solo-lectura (CSV público) los controles quedan deshabilitados.
  */
+const SAVE_DEBOUNCE_MS = 350
+
 export default function Dashboard() {
   const [items, setItems] = useState([])
   const [source, setSource] = useState(null)
   const [canWrite, setCanWrite] = useState(true)
-  const [sheetUrl, setSheetUrl] = useState('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
-  const [toDelete, setToDelete] = useState(null)
-  const [toEdit, setToEdit] = useState(null)         // { ...item } o null
-  const [creating, setCreating] = useState(false)    // boolean → abre modal en modo crear
-  const [saving, setSaving] = useState(false)
+  const [savingIds, setSavingIds] = useState(() => new Set())
+
+  // Refs para el control de escritura (no disparan re-render).
+  const itemsRef = useRef(items)           // último estado de items (para leer en callbacks)
+  const timers = useRef({})                // id -> timeout de debounce
+  const inflight = useRef({})              // id -> hay una petición en curso
+  const dirty = useRef({})                 // id -> llegaron más clics durante la petición
+  const baseline = useRef({})              // id -> valor confirmado antes de la ráfaga (para revertir)
+
+  useEffect(() => { itemsRef.current = items }, [items])
 
   const load = useCallback((signal) => {
     setLoading(true)
@@ -32,7 +42,6 @@ export default function Dashboard() {
         setItems(res.items ?? [])
         setSource(res.source)
         setCanWrite(res.canWrite !== false)
-        setSheetUrl(res.sheetUrl || '')
         setError(null)
       })
       .catch((err) => {
@@ -43,13 +52,16 @@ export default function Dashboard() {
 
   useEffect(() => {
     const ctrl = new AbortController()
-    // `load` es un fetch async que setState en el `.then`. La regla nueva
-    // se activa porque técnicamente estamos disparando actualizaciones
-    // desde un efecto; es el uso legítimo (carga inicial de datos externos).
     // eslint-disable-next-line react-hooks/set-state-in-effect
     load(ctrl.signal)
     return () => ctrl.abort()
   }, [load])
+
+  // Limpia timers pendientes al desmontar.
+  useEffect(() => {
+    const t = timers.current
+    return () => { Object.values(t).forEach(clearTimeout) }
+  }, [])
 
   const totals = useMemo(() => items.reduce((acc, it) => {
     acc.total += it.cantidad_total
@@ -58,50 +70,63 @@ export default function Dashboard() {
     return acc
   }, { total: 0, disp: 0, arr: 0 }), [items])
 
-  async function handleDelete() {
-    if (!toDelete) return
-    try {
-      await api.deleteItem(toDelete.id)
-      setItems((prev) => prev.filter((x) => x.id !== toDelete.id))
-      toast.success(`«${toDelete.nombre}» eliminado.`)
-      setToDelete(null)
-    } catch (err) {
-      toast.error(err.message || 'No se pudo eliminar.')
-    }
+  function markSaving(id, on) {
+    setSavingIds((prev) => {
+      const n = new Set(prev)
+      if (on) n.add(id); else n.delete(id)
+      return n
+    })
   }
 
-  async function handleSubmit(payload) {
-    setSaving(true)
+  /** Envía a la hoja el valor actual de disponibles del item (coalesce). */
+  const flushDisp = useCallback(async function flushDisp(id) {
+    if (inflight.current[id]) { dirty.current[id] = true; return } // ya hay una en curso
+    const current = itemsRef.current.find((x) => x.id === id)
+    if (!current) return
+    const target = current.disponibles
+
+    inflight.current[id] = true
+    dirty.current[id] = false
     try {
-      if (toEdit) {
-        const updated = await api.updateItem(toEdit.id, payload)
-        setItems((prev) => prev.map((x) => (x.id === updated.id ? updated : x)))
-        toast.success(`«${updated.nombre}» actualizado.`)
-      } else {
-        const created = await api.createItem(payload)
-        setItems((prev) => [...prev, created])
-        toast.success(`«${created.nombre}» creado.`)
+      const updated = await api.setDisponibles(id, target)
+      // Sincroniza con el valor autoritativo del servidor.
+      setItems((prev) => prev.map((x) => (x.id === id ? { ...x, ...updated } : x)))
+    } catch (err) {
+      // Revierte al valor confirmado antes de la ráfaga.
+      const base = baseline.current[id]
+      if (base != null) {
+        setItems((prev) => prev.map((x) => (x.id === id ? { ...x, disponibles: base } : x)))
       }
-      setToEdit(null)
-      setCreating(false)
-    } catch (err) {
-      toast.error(err.message || 'No se pudo guardar.')
+      dirty.current[id] = false // ya revertimos; no reintentar
+      toast.error(err.message || 'No se pudo guardar el cambio en Google Sheets.')
     } finally {
-      setSaving(false)
+      inflight.current[id] = false
+      if (dirty.current[id]) {
+        flushDisp(id) // llegaron más clics mientras escribíamos → manda el último valor
+      } else {
+        delete baseline.current[id]
+        markSaving(id, false)
+      }
     }
-  }
+  }, [])
 
-  async function toggleRent(item) {
-    if (item.disponibles === 0 && item.en_arriendo === 0) return
-    const patch = item.disponibles > 0
-      ? { disponibles: item.disponibles - 1, en_arriendo: item.en_arriendo + 1 }
-      : { disponibles: item.disponibles + 1, en_arriendo: item.en_arriendo - 1 }
-    try {
-      const updated = await api.updateItem(item.id, patch)
-      setItems((prev) => prev.map((x) => (x.id === updated.id ? updated : x)))
-    } catch (err) {
-      toast.error(err.message || 'No se pudo actualizar.')
-    }
+  /** Handler del botón +/-. Optimista + debounce por artículo. */
+  function adjustDisp(item, delta) {
+    if (!canWrite) return
+    const ceiling = Math.max(0, item.cantidad_total - item.en_arriendo)
+    const next = item.disponibles + delta
+    if (next < 0 || next > ceiling) return // fuera de rango: no-op
+
+    // Guarda el valor confirmado al inicio de la ráfaga (para poder revertir).
+    if (baseline.current[item.id] === undefined) baseline.current[item.id] = item.disponibles
+
+    // 1. Actualización optimista: el número (y las tarjetas) cambian al instante.
+    setItems((prev) => prev.map((x) => (x.id === item.id ? { ...x, disponibles: next } : x)))
+    markSaving(item.id, true)
+
+    // 2. Debounce: clics rápidos se agrupan en una sola escritura con el valor final.
+    clearTimeout(timers.current[item.id])
+    timers.current[item.id] = setTimeout(() => flushDisp(item.id), SAVE_DEBOUNCE_MS)
   }
 
   if (error) return <ErrorPanel error={error} onRetry={() => load()} />
@@ -123,29 +148,13 @@ export default function Dashboard() {
             </span>
           )}
         </div>
-        {canWrite && (
-          <button className="btn-primary" onClick={() => { setCreating(true); setToEdit(null) }}>
-            <Plus className="h-4 w-4" /> Nuevo artículo
-          </button>
-        )}
       </div>
 
       {!loading && !canWrite && (
-        <div className="mt-4 flex flex-col gap-2 rounded-xl border border-brand-500/40 bg-brand-600/10 p-4 text-sm sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-start gap-2 text-brand-100">
-            <Lock className="mt-0.5 h-4 w-4 shrink-0 text-brand-400" />
-            <span>
-              <strong>Modo solo-lectura.</strong> El inventario se muestra desde tu Google Sheet.
-              Para agregar, editar o eliminar artículos, hazlo directamente en la hoja —
-              el catálogo se actualiza automáticamente en unos segundos.
-            </span>
-          </div>
-          {sheetUrl && (
-            <a href={sheetUrl} target="_blank" rel="noopener noreferrer" className="btn-outline shrink-0">
-              <ExternalLink className="h-4 w-4" /> Abrir hoja
-            </a>
-          )}
-        </div>
+        <p className="mt-2 text-xs text-ink-400">
+          Edición en vivo disponible al configurar la service account (ver{' '}
+          <span className="font-mono">docs/GOOGLE_SHEETS_SETUP.md</span>).
+        </p>
       )}
 
       {loading ? (
@@ -158,68 +167,74 @@ export default function Dashboard() {
                 <th className="px-4 py-3">ID</th>
                 <th className="px-4 py-3">Nombre</th>
                 <th className="px-4 py-3">Categoría</th>
+                <th className="px-4 py-3">Sub-categoría</th>
                 <th className="px-4 py-3 text-right">Valor</th>
                 <th className="px-4 py-3 text-right">Total</th>
-                <th className="px-4 py-3 text-right">Disp.</th>
+                <th className="px-4 py-3 text-center">Disp.</th>
                 <th className="px-4 py-3 text-right">Arr.</th>
-                {canWrite && <th className="px-4 py-3 text-right">Acciones</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-ink-800 bg-ink-900/30">
-              {items.map((it) => (
-                <tr key={it.id} className="hover:bg-ink-800/40">
-                  <td className="px-4 py-3 font-mono text-xs text-ink-400">{it.id}</td>
-                  <td className="px-4 py-3 font-medium text-ink-50">{it.nombre}</td>
-                  <td className="px-4 py-3">
-                    <span className="rounded-full bg-brand-600/10 px-2 py-0.5 text-xs text-brand-300 ring-1 ring-brand-500/30">
-                      {it.categoria}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-right">{formatCLP(it.valor_arriendo)}</td>
-                  <td className="px-4 py-3 text-right">{it.cantidad_total}</td>
-                  <td className="px-4 py-3 text-right text-emerald-300">{it.disponibles}</td>
-                  <td className="px-4 py-3 text-right text-yellow-300">{it.en_arriendo}</td>
-                  {canWrite && (
+              {items.map((it) => {
+                const sub = it.subcategoria1 || it.subcategoria2 || ''
+                const ceiling = Math.max(0, it.cantidad_total - it.en_arriendo)
+                const saving = savingIds.has(it.id)
+                return (
+                  <tr key={it.id} className="hover:bg-ink-800/40">
+                    <td className="px-4 py-3 font-mono text-xs text-ink-400">{it.id}</td>
+                    <td className="px-4 py-3 font-medium text-ink-50">{it.nombre}</td>
                     <td className="px-4 py-3">
-                      <div className="flex items-center justify-end gap-1">
-                        <button className="btn-ghost px-2 py-1" onClick={() => toggleRent(it)}
-                                aria-label={`Alternar arriendo de ${it.nombre}`}
-                                title="Marcar 1 unidad como arrendada/disponible">
-                          <RotateCw className="h-4 w-4" />
+                      <span className="rounded-full bg-brand-600/10 px-2 py-0.5 text-xs text-brand-300 ring-1 ring-brand-500/30">
+                        {it.categoria}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      {sub ? (
+                        <span className="rounded-full bg-sky-500/10 px-2 py-0.5 text-xs text-sky-300 ring-1 ring-sky-500/30">
+                          {sub}
+                        </span>
+                      ) : (
+                        <span className="text-ink-500">—</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-right">{formatCLP(it.valor_arriendo)}</td>
+                    <td className="px-4 py-3 text-right">{it.cantidad_total}</td>
+                    <td className="px-4 py-3">
+                      <div className={`flex items-center justify-center gap-2 transition-opacity ${saving ? 'opacity-60' : ''}`}>
+                        <button
+                          type="button"
+                          className="btn-ghost h-7 w-7 shrink-0 justify-center p-0 disabled:cursor-not-allowed disabled:opacity-30"
+                          onClick={() => adjustDisp(it, -1)}
+                          disabled={!canWrite || it.disponibles <= 0}
+                          aria-label={`Restar una unidad disponible de ${it.nombre}`}
+                          title={!canWrite ? 'Configura la service account para editar' : 'Restar 1 disponible'}
+                        >
+                          <Minus className="h-4 w-4" />
                         </button>
-                        <button className="btn-ghost px-2 py-1" onClick={() => { setToEdit(it); setCreating(false) }}
-                                aria-label={`Editar ${it.nombre}`}>
-                          <Pencil className="h-4 w-4" />
-                        </button>
-                        <button className="btn-ghost px-2 py-1 text-red-400 hover:text-red-300"
-                                onClick={() => setToDelete(it)}
-                                aria-label={`Eliminar ${it.nombre}`}>
-                          <Trash2 className="h-4 w-4" />
+                        <span className="inline-flex min-w-[2.5rem] items-center justify-center gap-1 tabular-nums text-emerald-300">
+                          {saving && <Loader2 className="h-3 w-3 animate-spin text-ink-400" />}
+                          {it.disponibles}
+                        </span>
+                        <button
+                          type="button"
+                          className="btn-ghost h-7 w-7 shrink-0 justify-center p-0 disabled:cursor-not-allowed disabled:opacity-30"
+                          onClick={() => adjustDisp(it, +1)}
+                          disabled={!canWrite || it.disponibles >= ceiling}
+                          aria-label={`Sumar una unidad disponible de ${it.nombre}`}
+                          title={!canWrite ? 'Configura la service account para editar' : 'Sumar 1 disponible'}
+                        >
+                          <Plus className="h-4 w-4" />
                         </button>
                       </div>
                     </td>
-                  )}
-                </tr>
-              ))}
+                    <td className="px-4 py-3 text-right text-yellow-300">{it.en_arriendo}</td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         </div>
       )}
-
-      <ItemFormModal
-        open={creating || Boolean(toEdit)}
-        initial={toEdit}
-        saving={saving}
-        onCancel={() => { setToEdit(null); setCreating(false) }}
-        onSubmit={handleSubmit}
-      />
-
-      <ConfirmDeleteModal
-        open={Boolean(toDelete)}
-        item={toDelete}
-        onCancel={() => setToDelete(null)}
-        onConfirm={handleDelete}
-      />
     </>
   )
 }

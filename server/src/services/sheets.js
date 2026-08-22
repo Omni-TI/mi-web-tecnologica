@@ -439,3 +439,96 @@ export async function deleteItem(id) {
   invalidateItemsCache()
   return removed
 }
+
+/**
+ * Ajuste puntual de `disponibles` (control +/- del panel admin).
+ *
+ * A diferencia de updateItem, NO reescribe toda la hoja: en modo sheets-api
+ * actualiza SOLO la celda de disponibles de la fila del item (localizada por su
+ * ID en la columna 'id'). Esto es más rápido y reduce condiciones de carrera.
+ *
+ * Reglas de negocio: 0 <= value <= cantidad_total - en_arriendo.
+ */
+export async function setDisponibles(id, value) {
+  const next = Number(value)
+  if (!Number.isInteger(next) || next < 0) {
+    const e = new Error('disponibles debe ser un entero mayor o igual a 0'); e.status = 400; throw e
+  }
+
+  const all = await readAllRaw()
+  const idx = all.findIndex((i) => i.id === id)
+  if (idx === -1) { const e = new Error('Item no encontrado'); e.status = 404; throw e }
+
+  const item = all[idx]
+  const ceiling = Math.max(0, item.cantidad_total - item.en_arriendo)
+  if (next > ceiling) {
+    const e = new Error(
+      `disponibles no puede superar ${ceiling} (cantidad_total - en_arriendo).`,
+    )
+    e.status = 400
+    throw e
+  }
+
+  switch (config.sheetsMode) {
+    case 'sheets-api':
+      await writeDisponiblesCell(id, next)
+      break
+    case 'public-csv': {
+      const e = new Error(
+        'La hoja está en modo solo-lectura (CSV público). Para editar el inventario ' +
+        'desde el panel necesitas configurar una service account con permiso de edición ' +
+        '(ver docs/GOOGLE_SHEETS_SETUP.md).',
+      )
+      e.status = 400
+      throw e
+    }
+    default: {
+      all[idx] = { ...item, disponibles: next }
+      writeLocalItems(all)
+    }
+  }
+
+  invalidateItemsCache()
+  return { ...item, disponibles: next }
+}
+
+/**
+ * Escribe SOLO la celda de disponibles de la fila cuyo 'id' coincide.
+ * Localiza fila y columna leyendo la fila de encabezados y la columna 'id',
+ * así es robusto ante filas en blanco o reordenamientos de columnas.
+ */
+async function writeDisponiblesCell(id, value) {
+  const client = getClient()
+  if (!client) throw new Error('Sheets API no configurado')
+  const tab = await getTabName(client)
+
+  const res = await client.spreadsheets.values.get({
+    spreadsheetId: config.sheets.id,
+    range: `${tab}!A1:Z5000`,
+  })
+  const rows = res.data.values || []
+  if (rows.length < 2) throw new Error('La hoja no tiene datos')
+
+  const norm = rows[0].map(normHeader)
+  const idCol = norm.findIndex((h) => fieldForHeader(h) === 'id')
+  const dispCol = norm.findIndex((h) => fieldForHeader(h) === 'disponibles')
+  if (idCol === -1) throw new Error('No se encontró la columna "id" en la hoja')
+  if (dispCol === -1) throw new Error('No se encontró la columna "disponible" en la hoja')
+
+  let sheetRow = -1
+  for (let r = 1; r < rows.length; r++) {
+    if (String(rows[r][idCol] ?? '').trim() === String(id).trim()) {
+      sheetRow = r + 1 // +1 → índice de fila 1-based en la hoja
+      break
+    }
+  }
+  if (sheetRow === -1) throw new Error('No se encontró la fila del item en la hoja')
+
+  const col = colLetter(dispCol + 1)
+  await client.spreadsheets.values.update({
+    spreadsheetId: config.sheets.id,
+    range: `${tab}!${col}${sheetRow}`,
+    valueInputOption: 'RAW',
+    requestBody: { values: [[value]] },
+  })
+}

@@ -74,6 +74,8 @@ export const api = {
 
   createItem: (payload) => request('/api/items', { method: 'POST', body: payload }),
   updateItem: (id, patch) => request(`/api/items/${encodeURIComponent(id)}`, { method: 'PATCH', body: patch }),
+  setDisponibles: (id, disponibles) =>
+    request(`/api/items/${encodeURIComponent(id)}/disponibles`, { method: 'PATCH', body: { disponibles } }),
   deleteItem: (id) => request(`/api/items/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 
   audit: (signal) => request('/api/audit', { signal }),
