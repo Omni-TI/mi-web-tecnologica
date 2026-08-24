@@ -11,8 +11,6 @@ import NotFound from './pages/NotFound.jsx'
 /* Code splitting por ruta — baja el bundle inicial ~50%.
    Cada chunk carga bajo demanda cuando el usuario navega. */
 const Gallery       = lazy(() => import('./pages/Gallery.jsx'))
-const About         = lazy(() => import('./pages/About.jsx'))
-const Mission       = lazy(() => import('./pages/Mission.jsx'))
 const Social        = lazy(() => import('./pages/Social.jsx'))
 const Contact       = lazy(() => import('./pages/Contact.jsx'))
 const Privacy       = lazy(() => import('./pages/Privacy.jsx'))
@@ -33,8 +31,6 @@ export default function App() {
         <Route element={<PublicLayout />}>
           <Route index element={<Home />} />
           <Route path="catalogo" element={<Gallery />} />
-          <Route path="quienes-somos" element={<About />} />
-          <Route path="mision" element={<Mission />} />
           <Route path="redes" element={<Social />} />
           <Route path="contacto" element={<Contact />} />
           <Route path="privacidad" element={<Privacy />} />

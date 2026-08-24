@@ -23,8 +23,7 @@ export default function Footer() {
           <h3 className="text-sm font-semibold text-ink-100">Explorar</h3>
           <ul className="mt-3 space-y-2 text-sm text-ink-300">
             <li><Link to="/catalogo" className="hover:text-brand-400">Catálogo</Link></li>
-            <li><Link to="/quienes-somos" className="hover:text-brand-400">Quiénes somos</Link></li>
-            <li><Link to="/mision" className="hover:text-brand-400">Misión</Link></li>
+            <li><Link to="/redes" className="hover:text-brand-400">Redes sociales</Link></li>
           </ul>
         </div>
 

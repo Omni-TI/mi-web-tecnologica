@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Search, SlidersHorizontal, X, Database } from 'lucide-react'
+import { Search, X } from 'lucide-react'
 
 import { useItems } from '../hooks/useItems.js'
 import { useCatalogSearch } from '../hooks/useCatalogSearch.js'
@@ -8,6 +8,7 @@ import ItemCard from '../components/gallery/ItemCard.jsx'
 import CategoryPie from '../components/gallery/CategoryPie.jsx'
 import LoadingGrid from '../components/ui/LoadingGrid.jsx'
 import ErrorPanel from '../components/ui/ErrorPanel.jsx'
+import ScrollToTopButton from '../components/ui/ScrollToTopButton.jsx'
 
 /**
  * Galería pública.
@@ -17,7 +18,7 @@ import ErrorPanel from '../components/ui/ErrorPanel.jsx'
  */
 export default function Gallery() {
   const [searchParams, setSearchParams] = useSearchParams()
-  const { items, source, loading, error } = useItems()
+  const { items, loading, error } = useItems()
 
   const [q, setQ] = useState(searchParams.get('q') ?? '')
   const [category, setCategory] = useState(searchParams.get('cat') ?? 'Todas')
@@ -36,29 +37,14 @@ export default function Gallery() {
   }, [searchParams])
 
   const filtered = useCatalogSearch(items, q, category)
-  const totalDisp = useMemo(
-    () => filtered.reduce((sum, it) => sum + it.disponibles, 0),
-    [filtered],
-  )
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
-      <header className="mb-6 flex flex-wrap items-end justify-between gap-2">
-        <div>
-          <h1 className="font-display text-3xl font-bold">Catálogo</h1>
-          <p className="mt-1 text-sm text-ink-400">
-            Explora los artículos disponibles para arriendo. Filtra por categoría o busca por nombre.
-          </p>
-        </div>
-        {source && (
-          <span
-            className="inline-flex items-center gap-1 rounded-full border border-ink-700 px-2 py-1 text-[11px] uppercase tracking-wider text-ink-400"
-            title={source === 'sheets' ? 'Datos desde Google Sheets' : 'Datos de ejemplo (mock)'}
-          >
-            <Database className="h-3 w-3" />
-            {source === 'sheets' ? 'Google Sheets' : 'datos mock'}
-          </span>
-        )}
+      <header className="mb-6">
+        <h1 className="font-display text-3xl font-bold">Catálogo</h1>
+        <p className="mt-1 text-sm text-ink-400">
+          Explora los artículos disponibles para arriendo. Filtra por categoría o busca por nombre.
+        </p>
       </header>
 
       {error ? (
@@ -71,21 +57,6 @@ export default function Gallery() {
             ) : (
               <CategoryPie items={items} active={category} onSelect={setCategory} />
             )}
-
-            <div className="card p-4">
-              <div className="flex items-center gap-2 text-ink-100">
-                <SlidersHorizontal className="h-4 w-4 text-brand-500" />
-                <h3 className="text-sm font-semibold">Resumen</h3>
-              </div>
-              <dl className="mt-3 space-y-1 text-sm text-ink-300">
-                <div className="flex justify-between"><dt>Artículos</dt><dd>{loading ? '…' : filtered.length}</dd></div>
-                <div className="flex justify-between"><dt>Unidades disponibles</dt><dd>{loading ? '…' : totalDisp}</dd></div>
-                <div className="flex justify-between">
-                  <dt>Categoría activa</dt>
-                  <dd className="text-brand-400">{category === 'Todas' ? '—' : category}</dd>
-                </div>
-              </dl>
-            </div>
           </aside>
 
           <section>
@@ -130,6 +101,8 @@ export default function Gallery() {
           </section>
         </div>
       )}
+
+      <ScrollToTopButton />
     </div>
   )
 }

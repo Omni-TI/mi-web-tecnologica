@@ -4,8 +4,6 @@ import { Menu, X, Search, Zap } from 'lucide-react'
 
 const NAV_LINKS = [
   { to: '/catalogo',       label: 'Catálogo' },
-  { to: '/quienes-somos',  label: 'Quiénes somos' },
-  { to: '/mision',         label: 'Misión' },
   { to: '/redes',          label: 'Redes' },
   { to: '/contacto',       label: 'Contacto' },
 ]

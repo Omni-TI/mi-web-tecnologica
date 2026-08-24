@@ -68,8 +68,6 @@ export default function Home() {
         <div className="mt-6 grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5">
           {[
             { to: '/catalogo',      label: 'Catálogo' },
-            { to: '/quienes-somos', label: 'Quiénes somos' },
-            { to: '/mision',        label: 'Nuestra misión' },
             { to: '/redes',         label: 'Redes sociales' },
             { to: '/contacto',      label: 'Contacto' },
           ].map((l) => (
