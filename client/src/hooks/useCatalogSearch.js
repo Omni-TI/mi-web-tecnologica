@@ -2,13 +2,14 @@ import { useMemo } from 'react'
 import Fuse from 'fuse.js'
 
 /**
- * Búsqueda del catálogo:
- *   - Match exacto (case/acento-insensible) tiene prioridad.
- *   - Si no, fuzzy con Fuse.js.
- *   - Además filtra por categoría (si se pasa).
+ * Búsqueda + filtrado + ordenamiento del catálogo.
  *
- * Diseñado para trabajar sobre datos ya cargados en memoria (una vez el
- * frontend recibe el catálogo del backend, cachearlo aquí es barato).
+ * Aplica, en este orden y sin conflictos entre sí:
+ *   1. Filtro por categoría y sub-categoría (subcategoria1).
+ *   2. Búsqueda por texto: match exacto/contains con prioridad; si no, fuzzy (Fuse).
+ *   3. Ordenamiento (relevancia | precio asc/desc | nombre A-Z/Z-A).
+ *
+ * Trabaja sobre datos ya cargados en memoria.
  */
 const FUSE_OPTIONS = {
   keys: [
@@ -31,34 +32,51 @@ function normalize(s) {
     .trim()
 }
 
-export function useCatalogSearch(items, query, category) {
+/** Comparadores de ordenamiento. 'relevancia' preserva el orden de entrada. */
+const SORTERS = {
+  relevancia: null,
+  precio_asc: (a, b) => (a.valor_arriendo ?? 0) - (b.valor_arriendo ?? 0),
+  precio_desc: (a, b) => (b.valor_arriendo ?? 0) - (a.valor_arriendo ?? 0),
+  nombre_az: (a, b) => normalize(a.nombre).localeCompare(normalize(b.nombre)),
+  nombre_za: (a, b) => normalize(b.nombre).localeCompare(normalize(a.nombre)),
+}
+
+export function useCatalogSearch(items, query, { category = 'Todas', subcategoria = '', sort = 'relevancia' } = {}) {
   const fuse = useMemo(() => new Fuse(items, FUSE_OPTIONS), [items])
 
   return useMemo(() => {
     const q = normalize(query)
-    let out = items
 
+    // 1) Filtro por categoría / sub-categoría.
+    let base = items
     if (category && category !== 'Todas') {
-      out = out.filter((it) => it.categoria === category)
+      base = base.filter((it) => it.categoria === category)
+    }
+    if (subcategoria) {
+      base = base.filter((it) => it.subcategoria1 === subcategoria)
     }
 
-    if (!q) return out
-
-    // 1) Exacto o "contains" tiene prioridad absoluta.
-    const exact = out.filter(
-      (it) =>
-        normalize(it.nombre).includes(q) ||
-        normalize(it.categoria).includes(q) ||
-        normalize(it.subcategoria1).includes(q) ||
-        normalize(it.subcategoria2).includes(q),
-    )
-    if (exact.length > 0) return exact
-
-    // 2) Fallback fuzzy respetando el filtro de categoría.
-    const fuzzy = fuse.search(q).map((r) => r.item)
-    if (category && category !== 'Todas') {
-      return fuzzy.filter((it) => it.categoria === category)
+    // 2) Búsqueda por texto sobre el subconjunto ya filtrado.
+    let out = base
+    if (q) {
+      const exact = base.filter(
+        (it) =>
+          normalize(it.nombre).includes(q) ||
+          normalize(it.categoria).includes(q) ||
+          normalize(it.subcategoria1).includes(q) ||
+          normalize(it.subcategoria2).includes(q),
+      )
+      if (exact.length > 0) {
+        out = exact
+      } else {
+        // Fuzzy respetando los filtros aplicados.
+        const allowed = new Set(base)
+        out = fuse.search(q).map((r) => r.item).filter((it) => allowed.has(it))
+      }
     }
-    return fuzzy
-  }, [items, query, category, fuse])
+
+    // 3) Ordenamiento (copia para no mutar; 'relevancia' respeta el orden actual).
+    const sorter = SORTERS[sort]
+    return sorter ? [...out].sort(sorter) : out
+  }, [items, query, category, subcategoria, sort, fuse])
 }
