@@ -30,6 +30,9 @@ const ItemBase = z.object({
   disponibles: z.number().int().nonnegative(),
   en_arriendo: z.number().int().nonnegative(),
   imagen_url: z.string().url().or(z.literal('')).default(''),
+  // Hasta 3 URLs de imagen por artículo. Preparado para el almacenamiento real
+  // (p. ej. ImageKit); por ahora suele venir vacío y el frontend usa placeholders.
+  imagenes: z.array(z.string()).max(3).default([]),
   fecha_creacion: z.string().default(''),
   activo: z.boolean().default(true),
 })

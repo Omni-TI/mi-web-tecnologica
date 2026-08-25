@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Minus, Plus, Loader2 } from 'lucide-react'
+import { Minus, Plus, Loader2, Image as ImageIcon } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { api } from '../../lib/api.js'
 import { formatCLP } from '../../lib/format.js'
 import LoadingGrid from '../../components/ui/LoadingGrid.jsx'
 import ErrorPanel from '../../components/ui/ErrorPanel.jsx'
+import ImageManagerModal from '../../components/admin/ImageManagerModal.jsx'
 
 /**
  * Panel admin.
@@ -25,6 +26,7 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [savingIds, setSavingIds] = useState(() => new Set())
+  const [imagesFor, setImagesFor] = useState(null) // artículo cuyas imágenes se editan
 
   // Refs para el control de escritura (no disparan re-render).
   const itemsRef = useRef(items)           // último estado de items (para leer en callbacks)
@@ -172,6 +174,7 @@ export default function Dashboard() {
                 <th className="px-4 py-3 text-right">Total</th>
                 <th className="px-4 py-3 text-center">Disp.</th>
                 <th className="px-4 py-3 text-right">Arr.</th>
+                <th className="px-4 py-3 text-center">Imágenes</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-ink-800 bg-ink-900/30">
@@ -228,6 +231,17 @@ export default function Dashboard() {
                       </div>
                     </td>
                     <td className="px-4 py-3 text-right text-yellow-300">{it.en_arriendo}</td>
+                    <td className="px-4 py-3 text-center">
+                      <button
+                        type="button"
+                        className="btn-ghost mx-auto flex items-center gap-1 px-2 py-1 text-xs"
+                        onClick={() => setImagesFor(it)}
+                        aria-label={`Gestionar imágenes de ${it.nombre}`}
+                        title="Gestionar imágenes"
+                      >
+                        <ImageIcon className="h-4 w-4" /> Gestionar
+                      </button>
+                    </td>
                   </tr>
                 )
               })}
@@ -235,6 +249,12 @@ export default function Dashboard() {
           </table>
         </div>
       )}
+
+      <ImageManagerModal
+        open={Boolean(imagesFor)}
+        item={imagesFor}
+        onClose={() => setImagesFor(null)}
+      />
     </>
   )
 }

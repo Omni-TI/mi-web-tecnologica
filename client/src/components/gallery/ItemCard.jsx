@@ -5,12 +5,24 @@ import { formatCLP } from '../../lib/format.js'
  * Tarjeta de artículo para la galería pública.
  * Muestra imagen (placeholder si no hay), nombre, categoría, valor y disponibilidad.
  */
-export default function ItemCard({ item }) {
+export default function ItemCard({ item, onOpen }) {
   const disponible = item.disponibles > 0
+  const clickable = typeof onOpen === 'function'
+  const clickProps = clickable
+    ? {
+        role: 'button',
+        tabIndex: 0,
+        onClick: onOpen,
+        onKeyDown: (e) => {
+          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen() }
+        },
+      }
+    : {}
   return (
     <article
-      className="card group animate-fade-up overflow-hidden transition-transform duration-200 hover:-translate-y-1 hover:border-brand-500/60 hover:shadow-glow"
-      aria-label={`${item.nombre} — categoría ${item.categoria}`}
+      {...clickProps}
+      className={`card group animate-fade-up overflow-hidden transition-transform duration-200 hover:-translate-y-1 hover:border-brand-500/60 hover:shadow-glow ${clickable ? 'cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500' : ''}`}
+      aria-label={clickable ? `Ver detalle de ${item.nombre}` : `${item.nombre} — categoría ${item.categoria}`}
     >
       <div className="relative flex aspect-[4/3] items-center justify-center bg-gradient-to-br from-ink-800 to-ink-950 text-ink-600">
         {item.imagen_url ? (

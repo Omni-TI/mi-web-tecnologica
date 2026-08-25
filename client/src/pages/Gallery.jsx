@@ -5,6 +5,7 @@ import { Search, X, ArrowUpDown } from 'lucide-react'
 import { useItems } from '../hooks/useItems.js'
 import { useCatalogSearch } from '../hooks/useCatalogSearch.js'
 import ItemCard from '../components/gallery/ItemCard.jsx'
+import ItemDetailModal from '../components/gallery/ItemDetailModal.jsx'
 import CategoryMenu from '../components/gallery/CategoryMenu.jsx'
 import LoadingGrid from '../components/ui/LoadingGrid.jsx'
 import ErrorPanel from '../components/ui/ErrorPanel.jsx'
@@ -54,6 +55,8 @@ export default function Gallery() {
   }, [searchParams])
 
   const filtered = useCatalogSearch(items, q, { category, subcategoria, sort })
+
+  const [selected, setSelected] = useState(null) // artículo abierto en el modal de detalle
 
   const hasAnyFilter = q || (category && category !== 'Todas') || subcategoria || sort !== 'relevancia'
   function clearAll() {
@@ -138,13 +141,15 @@ export default function Gallery() {
             ) : (
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 {filtered.map((it) => (
-                  <ItemCard key={it.id} item={it} />
+                  <ItemCard key={it.id} item={it} onOpen={() => setSelected(it)} />
                 ))}
               </div>
             )}
           </section>
         </div>
       )}
+
+      <ItemDetailModal item={selected} open={Boolean(selected)} onClose={() => setSelected(null)} />
 
       <ScrollToTopButton />
     </div>
