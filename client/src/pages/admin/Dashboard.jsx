@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Minus, Plus, Loader2, Image as ImageIcon } from 'lucide-react'
+import { Minus, Plus, Loader2, Image as ImageIcon, ExternalLink } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { api } from '../../lib/api.js'
@@ -22,6 +22,7 @@ const SAVE_DEBOUNCE_MS = 350
 export default function Dashboard() {
   const [items, setItems] = useState([])
   const [source, setSource] = useState(null)
+  const [sheetUrl, setSheetUrl] = useState('')
   const [canWrite, setCanWrite] = useState(true)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -43,6 +44,7 @@ export default function Dashboard() {
       .then((res) => {
         setItems(res.items ?? [])
         setSource(res.source)
+        setSheetUrl(res.sheetUrl || '')
         setCanWrite(res.canWrite !== false)
         setError(null)
       })
@@ -150,6 +152,16 @@ export default function Dashboard() {
             </span>
           )}
         </div>
+        {sheetUrl && (
+          <a
+            href={sheetUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="btn-outline text-sm"
+          >
+            <ExternalLink className="h-4 w-4" /> Abrir hoja de cálculo
+          </a>
+        )}
       </div>
 
       {!loading && !canWrite && (

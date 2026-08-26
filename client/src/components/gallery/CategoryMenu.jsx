@@ -1,16 +1,16 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { ChevronDown, ChevronRight, ChevronLeft, Check, X, Tag } from 'lucide-react'
+import { useMemo, useState } from 'react'
+import { Check, X, Tag, ChevronRight } from 'lucide-react'
 
 /**
- * Selector de categoría / sub-categoría por pasos (reemplaza el gráfico de torta).
+ * Selector de categoría / sub-categoría.
  *
- * - Nivel 1: lista de categorías (leídas dinámicamente de los datos).
- * - Nivel 2: al elegir una categoría, muestra sus sub-categorías (subcategoria1)
- *   más la opción "Ver todo en [categoría]".
- * - Breadcrumb/atrás para volver de sub-categoría a categoría y de categoría a todas.
+ * - Nivel 1: lista ESTÁTICA de categorías, siempre visible como chips (no hay
+ *   nada que abrir/desplegar para verlas). Leídas dinámicamente de los datos.
+ * - Nivel 2: al hacer clic en una categoría con sub-categorías, éstas se
+ *   despliegan inline debajo, más la opción "Ver todo en [categoría]".
+ * - Botón para cerrar/volver a sólo la lista de categorías.
  * - Chip del filtro activo con una X para quitarlo.
- * - Táctil: panel tipo accordion con áreas de toque amplias; en móvil ocupa
- *   todo el ancho de la columna.
+ * - Responsivo: los chips hacen wrap; en móvil ocupan poco alto.
  *
  * Props:
  *   items         : lista de artículos.
@@ -19,9 +19,8 @@ import { ChevronDown, ChevronRight, ChevronLeft, Check, X, Tag } from 'lucide-re
  *   onChange({category, subcategoria}) : aplica el filtro.
  */
 export default function CategoryMenu({ items, category = 'Todas', subcategoria = '', onChange }) {
-  const [open, setOpen] = useState(false)
-  const [drillCat, setDrillCat] = useState(null) // categoría en la que se está navegando (nivel 2)
-  const rootRef = useRef(null)
+  // Categoría cuyas sub-categorías están desplegadas inline (null = ninguna).
+  const [expanded, setExpanded] = useState(category && category !== 'Todas' ? category : null)
 
   // { categoria: [subcategorias únicas ordenadas] }
   const tree = useMemo(() => {
@@ -33,151 +32,109 @@ export default function CategoryMenu({ items, category = 'Todas', subcategoria =
     }
     return Array.from(map.entries())
       .sort((a, b) => a[0].localeCompare(b[0]))
-      .map(([cat, subs]) => ({
-        cat,
-        subs: Array.from(subs).sort((a, b) => a.localeCompare(b)),
-      }))
+      .map(([cat, subs]) => ({ cat, subs: Array.from(subs).sort((a, b) => a.localeCompare(b)) }))
   }, [items])
 
-  // Cerrar al hacer clic fuera o con Escape.
-  useEffect(() => {
-    if (!open) return
-    const onDown = (e) => { if (rootRef.current && !rootRef.current.contains(e.target)) setOpen(false) }
-    const onKey = (e) => { if (e.key === 'Escape') setOpen(false) }
-    document.addEventListener('mousedown', onDown)
-    document.addEventListener('keydown', onKey)
-    return () => {
-      document.removeEventListener('mousedown', onDown)
-      document.removeEventListener('keydown', onKey)
-    }
-  }, [open])
-
   const hasFilter = (category && category !== 'Todas') || Boolean(subcategoria)
-  const buttonLabel = !hasFilter
-    ? 'Todas las categorías'
-    : subcategoria
-      ? `${category} › ${subcategoria}`
-      : category
 
   function apply(next) {
     onChange(next)
-    setOpen(false)
-    setDrillCat(null)
   }
 
-  function toggleOpen() {
-    setOpen((v) => {
-      const nv = !v
-      // Al abrir, arranca mostrando la categoría activa (si hay) o el nivel 1.
-      if (nv) setDrillCat(category && category !== 'Todas' ? category : null)
-      return nv
-    })
+  function clickCategory(node) {
+    if (node.subs.length > 0) {
+      // Con sub-categorías: despliega/oculta el panel inline (no filtra aún).
+      setExpanded((cur) => (cur === node.cat ? null : node.cat))
+    } else {
+      // Sin sub-categorías: filtra directo por la categoría completa.
+      setExpanded(null)
+      apply({ category: node.cat, subcategoria: '' })
+    }
   }
 
-  const current = drillCat ? tree.find((t) => t.cat === drillCat) : null
+  const current = expanded ? tree.find((t) => t.cat === expanded) : null
 
   return (
-    <div className="card p-3" ref={rootRef}>
-      <div className="mb-2 flex items-center gap-2 px-1 text-ink-100">
+    <div className="card p-4">
+      <div className="mb-3 flex items-center gap-2 text-ink-100">
         <Tag className="h-4 w-4 text-brand-500" aria-hidden />
         <h2 className="text-sm font-semibold">Categoría</h2>
       </div>
 
-      {/* Botón que abre el menú */}
-      <button
-        type="button"
-        onClick={toggleOpen}
-        aria-haspopup="menu"
-        aria-expanded={open}
-        className="flex w-full items-center justify-between gap-2 rounded-lg border border-ink-700 bg-ink-900/40 px-3 py-2.5 text-left text-sm text-ink-100 hover:border-brand-500/50"
-      >
-        <span className="truncate">{buttonLabel}</span>
-        <ChevronDown className={`h-4 w-4 shrink-0 text-ink-400 transition-transform ${open ? 'rotate-180' : ''}`} aria-hidden />
-      </button>
+      {/* Lista ESTÁTICA de categorías (siempre visible) */}
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={() => { setExpanded(null); apply({ category: 'Todas', subcategoria: '' }) }}
+          className={chipClass(!hasFilter)}
+        >
+          Todas
+        </button>
+        {tree.map((node) => {
+          const active = category === node.cat
+          const isOpen = expanded === node.cat
+          return (
+            <button
+              key={node.cat}
+              type="button"
+              onClick={() => clickCategory(node)}
+              aria-expanded={node.subs.length > 0 ? isOpen : undefined}
+              className={chipClass(active, isOpen)}
+            >
+              {node.cat}
+              {node.subs.length > 0 && (
+                <ChevronRight className={`h-3.5 w-3.5 transition-transform ${isOpen ? 'rotate-90' : ''}`} aria-hidden />
+              )}
+            </button>
+          )
+        })}
+      </div>
 
-      {/* Panel desplegable (accordion en la columna, full-width en móvil) */}
-      {open && (
-        <div className="mt-2 overflow-hidden rounded-lg border border-ink-700 bg-ink-900/60" role="menu">
-          {!current ? (
-            /* ── Nivel 1: categorías ── */
-            <ul className="max-h-80 overflow-y-auto py-1">
-              <li>
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={() => apply({ category: 'Todas', subcategoria: '' })}
-                  className="flex w-full items-center justify-between px-3 py-2.5 text-sm text-ink-200 hover:bg-ink-800/70"
-                >
-                  <span>Todas las categorías</span>
-                  {!hasFilter && <Check className="h-4 w-4 text-brand-400" aria-hidden />}
-                </button>
-              </li>
-              {tree.map(({ cat, subs }) => (
-                <li key={cat}>
-                  <button
-                    type="button"
-                    role="menuitem"
-                    onClick={() => (subs.length > 0 ? setDrillCat(cat) : apply({ category: cat, subcategoria: '' }))}
-                    className="flex w-full items-center justify-between px-3 py-2.5 text-sm text-ink-100 hover:bg-ink-800/70"
-                  >
-                    <span className={category === cat ? 'text-brand-300' : ''}>{cat}</span>
-                    {subs.length > 0
-                      ? <ChevronRight className="h-4 w-4 text-ink-400" aria-hidden />
-                      : (category === cat && <Check className="h-4 w-4 text-brand-400" aria-hidden />)}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            /* ── Nivel 2: sub-categorías de `drillCat` ── */
-            <div>
+      {/* Sub-categorías desplegadas inline para la categoría elegida */}
+      {current && (
+        <div className="mt-3 rounded-lg border border-ink-800 bg-ink-900/50 p-3">
+          <div className="mb-2 flex items-center justify-between">
+            <span className="text-xs uppercase tracking-wider text-ink-500">{current.cat}</span>
+            <button
+              type="button"
+              onClick={() => setExpanded(null)}
+              className="text-xs text-ink-400 hover:text-brand-400"
+              aria-label="Cerrar sub-categorías"
+            >
+              Cerrar
+            </button>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => apply({ category: current.cat, subcategoria: '' })}
+              className={subChipClass(category === current.cat && !subcategoria)}
+            >
+              Ver todo en {current.cat}
+            </button>
+            {current.subs.map((sub) => (
               <button
+                key={sub}
                 type="button"
-                onClick={() => setDrillCat(null)}
-                className="flex w-full items-center gap-1 border-b border-ink-800 px-3 py-2.5 text-xs font-medium text-ink-400 hover:text-brand-400"
+                onClick={() => apply({ category: current.cat, subcategoria: sub })}
+                className={subChipClass(category === current.cat && subcategoria === sub)}
               >
-                <ChevronLeft className="h-4 w-4" aria-hidden /> Todas las categorías
+                {sub}
               </button>
-              <div className="px-3 py-2 text-xs uppercase tracking-wider text-ink-500">{current.cat}</div>
-              <ul className="max-h-72 overflow-y-auto pb-1">
-                <li>
-                  <button
-                    type="button"
-                    role="menuitem"
-                    onClick={() => apply({ category: current.cat, subcategoria: '' })}
-                    className="flex w-full items-center justify-between px-3 py-2.5 text-sm text-ink-200 hover:bg-ink-800/70"
-                  >
-                    <span>Ver todo en {current.cat}</span>
-                    {category === current.cat && !subcategoria && <Check className="h-4 w-4 text-brand-400" aria-hidden />}
-                  </button>
-                </li>
-                {current.subs.map((sub) => (
-                  <li key={sub}>
-                    <button
-                      type="button"
-                      role="menuitem"
-                      onClick={() => apply({ category: current.cat, subcategoria: sub })}
-                      className="flex w-full items-center justify-between px-3 py-2.5 text-sm text-ink-100 hover:bg-ink-800/70"
-                    >
-                      <span className={subcategoria === sub ? 'text-brand-300' : ''}>{sub}</span>
-                      {category === current.cat && subcategoria === sub && <Check className="h-4 w-4 text-brand-400" aria-hidden />}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
+            ))}
+          </div>
         </div>
       )}
 
       {/* Chip del filtro activo con X para quitarlo */}
       {hasFilter && (
-        <div className="mt-3 flex flex-wrap items-center gap-2">
+        <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-ink-800 pt-3">
+          <span className="text-xs text-ink-500">Filtro:</span>
           <span className="inline-flex items-center gap-1 rounded-full bg-brand-600/15 px-2.5 py-1 text-xs text-brand-200 ring-1 ring-brand-500/30">
             {subcategoria ? `${category} › ${subcategoria}` : category}
             <button
               type="button"
-              onClick={() => apply({ category: 'Todas', subcategoria: '' })}
+              onClick={() => { setExpanded(null); apply({ category: 'Todas', subcategoria: '' }) }}
               aria-label="Quitar filtro de categoría"
               className="ml-0.5 rounded-full p-0.5 hover:bg-brand-500/30"
             >
@@ -188,4 +145,20 @@ export default function CategoryMenu({ items, category = 'Todas', subcategoria =
       )}
     </div>
   )
+}
+
+/** Chip de categoría (nivel 1). `active` = filtro aplicado; `open` = desplegada. */
+function chipClass(active, open = false) {
+  const base = 'inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-medium transition-colors'
+  if (active) return `${base} bg-brand-600 text-white ring-1 ring-brand-400`
+  if (open) return `${base} bg-brand-600/15 text-brand-200 ring-1 ring-brand-500/40`
+  return `${base} bg-ink-800/60 text-ink-200 ring-1 ring-ink-700 hover:ring-brand-500/50 hover:text-brand-300`
+}
+
+/** Chip de sub-categoría (nivel 2). */
+function subChipClass(active) {
+  const base = 'inline-flex items-center rounded-full px-2.5 py-1 text-xs transition-colors'
+  return active
+    ? `${base} bg-brand-600 text-white`
+    : `${base} bg-ink-800/60 text-ink-200 ring-1 ring-ink-700 hover:ring-brand-500/50 hover:text-brand-300`
 }
