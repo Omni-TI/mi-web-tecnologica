@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Minus, Plus, Loader2, Image as ImageIcon, ExternalLink } from 'lucide-react'
+import { Minus, Plus, Loader2, Image as ImageIcon, ExternalLink, Search, PlusCircle } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { api } from '../../lib/api.js'
@@ -7,17 +7,24 @@ import { formatCLP } from '../../lib/format.js'
 import LoadingGrid from '../../components/ui/LoadingGrid.jsx'
 import ErrorPanel from '../../components/ui/ErrorPanel.jsx'
 import ImageManagerModal from '../../components/admin/ImageManagerModal.jsx'
+import AddItemModal from '../../components/admin/AddItemModal.jsx'
 
 /**
  * Panel admin.
- * - Inventario leído desde Google Sheets.
- * - Ajuste en vivo de unidades disponibles (+/-) sincronizado con la hoja:
- *   actualización optimista, debounce/cola por artículo, reversión ante error.
+ * - Inventario leído desde Google Sheets, con búsqueda instantánea (cliente).
+ * - Botones +/- en la columna "Arr." = traspaso de una unidad entre
+ *   disponibles y en_arriendo (el total se mantiene). Optimista + debounce/cola,
+ *   reversión ante error e indicador de "guardando", sincronizado con la hoja.
+ * - "Agregar artículo": crea una fila nueva en la hoja.
  *
- * La escritura solo persiste en modo service account (canWrite === true);
- * en modo solo-lectura (CSV público) los controles quedan deshabilitados.
+ * La escritura solo persiste con service account (canWrite); en modo
+ * solo-lectura (CSV público) los controles quedan deshabilitados.
  */
 const SAVE_DEBOUNCE_MS = 350
+
+function norm(s) {
+  return String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+}
 
 export default function Dashboard() {
   const [items, setItems] = useState([])
@@ -28,13 +35,16 @@ export default function Dashboard() {
   const [error, setError] = useState(null)
   const [savingIds, setSavingIds] = useState(() => new Set())
   const [imagesFor, setImagesFor] = useState(null) // artículo cuyas imágenes se editan
+  const [query, setQuery] = useState('')           // búsqueda de la tabla
+  const [adding, setAdding] = useState(false)       // modal "Agregar artículo"
+  const [creating, setCreating] = useState(false)   // guardando el nuevo artículo
 
   // Refs para el control de escritura (no disparan re-render).
-  const itemsRef = useRef(items)           // último estado de items (para leer en callbacks)
-  const timers = useRef({})                // id -> timeout de debounce
-  const inflight = useRef({})              // id -> hay una petición en curso
-  const dirty = useRef({})                 // id -> llegaron más clics durante la petición
-  const baseline = useRef({})              // id -> valor confirmado antes de la ráfaga (para revertir)
+  const itemsRef = useRef(items)
+  const timers = useRef({})
+  const inflight = useRef({})
+  const dirty = useRef({})
+  const baseline = useRef({}) // id -> { disponibles, en_arriendo } antes de la ráfaga
 
   useEffect(() => { itemsRef.current = items }, [items])
 
@@ -48,9 +58,7 @@ export default function Dashboard() {
         setCanWrite(res.canWrite !== false)
         setError(null)
       })
-      .catch((err) => {
-        if (err.name !== 'AbortError') setError(err)
-      })
+      .catch((err) => { if (err.name !== 'AbortError') setError(err) })
       .finally(() => setLoading(false))
   }, [])
 
@@ -67,12 +75,26 @@ export default function Dashboard() {
     return () => { Object.values(t).forEach(clearTimeout) }
   }, [])
 
+  // Totales sobre TODO el inventario (no la vista filtrada).
   const totals = useMemo(() => items.reduce((acc, it) => {
     acc.total += it.cantidad_total
     acc.disp += it.disponibles
     acc.arr += it.en_arriendo
     return acc
   }, { total: 0, disp: 0, arr: 0 }), [items])
+
+  // Búsqueda instantánea: nombre, ID, categoría y sub-categoría.
+  const filtered = useMemo(() => {
+    const q = norm(query).trim()
+    if (!q) return items
+    return items.filter((it) =>
+      norm(it.id).includes(q) ||
+      norm(it.nombre).includes(q) ||
+      norm(it.categoria).includes(q) ||
+      norm(it.subcategoria1).includes(q) ||
+      norm(it.subcategoria2).includes(q),
+    )
+  }, [items, query])
 
   function markSaving(id, on) {
     setSavingIds((prev) => {
@@ -82,31 +104,30 @@ export default function Dashboard() {
     })
   }
 
-  /** Envía a la hoja el valor actual de disponibles del item (coalesce). */
-  const flushDisp = useCallback(async function flushDisp(id) {
-    if (inflight.current[id]) { dirty.current[id] = true; return } // ya hay una en curso
+  /** Envía a la hoja el estado actual (disponibles + en_arriendo) del item. */
+  const flushStock = useCallback(async function flushStock(id) {
+    if (inflight.current[id]) { dirty.current[id] = true; return }
     const current = itemsRef.current.find((x) => x.id === id)
     if (!current) return
-    const target = current.disponibles
+    const d = current.disponibles
+    const a = current.en_arriendo
 
     inflight.current[id] = true
     dirty.current[id] = false
     try {
-      const updated = await api.setDisponibles(id, target)
-      // Sincroniza con el valor autoritativo del servidor.
+      const updated = await api.setStock(id, d, a)
       setItems((prev) => prev.map((x) => (x.id === id ? { ...x, ...updated } : x)))
     } catch (err) {
-      // Revierte al valor confirmado antes de la ráfaga.
       const base = baseline.current[id]
-      if (base != null) {
-        setItems((prev) => prev.map((x) => (x.id === id ? { ...x, disponibles: base } : x)))
+      if (base) {
+        setItems((prev) => prev.map((x) => (x.id === id ? { ...x, disponibles: base.disponibles, en_arriendo: base.en_arriendo } : x)))
       }
-      dirty.current[id] = false // ya revertimos; no reintentar
+      dirty.current[id] = false
       toast.error(err.message || 'No se pudo guardar el cambio en Google Sheets.')
     } finally {
       inflight.current[id] = false
       if (dirty.current[id]) {
-        flushDisp(id) // llegaron más clics mientras escribíamos → manda el último valor
+        flushStock(id)
       } else {
         delete baseline.current[id]
         markSaving(id, false)
@@ -114,23 +135,41 @@ export default function Dashboard() {
     }
   }, [])
 
-  /** Handler del botón +/-. Optimista + debounce por artículo. */
-  function adjustDisp(item, delta) {
+  /**
+   * Traspaso de una unidad (botón +/- en "Arr.").
+   *  delta = +1 → arrendar: disponibles−1, en_arriendo+1 (requiere disponibles > 0)
+   *  delta = -1 → devolver: disponibles+1, en_arriendo−1 (requiere en_arriendo > 0)
+   */
+  function adjustRent(item, delta) {
     if (!canWrite) return
-    const ceiling = Math.max(0, item.cantidad_total - item.en_arriendo)
-    const next = item.disponibles + delta
-    if (next < 0 || next > ceiling) return // fuera de rango: no-op
+    const nextArr = item.en_arriendo + delta
+    const nextDisp = item.disponibles - delta
+    if (nextArr < 0 || nextDisp < 0) return // fuera de rango
 
-    // Guarda el valor confirmado al inicio de la ráfaga (para poder revertir).
-    if (baseline.current[item.id] === undefined) baseline.current[item.id] = item.disponibles
+    if (baseline.current[item.id] === undefined) {
+      baseline.current[item.id] = { disponibles: item.disponibles, en_arriendo: item.en_arriendo }
+    }
 
-    // 1. Actualización optimista: el número (y las tarjetas) cambian al instante.
-    setItems((prev) => prev.map((x) => (x.id === item.id ? { ...x, disponibles: next } : x)))
+    // Optimista: ambas columnas y las tarjetas cambian al instante.
+    setItems((prev) => prev.map((x) => (x.id === item.id ? { ...x, disponibles: nextDisp, en_arriendo: nextArr } : x)))
     markSaving(item.id, true)
 
-    // 2. Debounce: clics rápidos se agrupan en una sola escritura con el valor final.
     clearTimeout(timers.current[item.id])
-    timers.current[item.id] = setTimeout(() => flushDisp(item.id), SAVE_DEBOUNCE_MS)
+    timers.current[item.id] = setTimeout(() => flushStock(item.id), SAVE_DEBOUNCE_MS)
+  }
+
+  async function handleCreate(payload) {
+    setCreating(true)
+    try {
+      const created = await api.createItem(payload)
+      setItems((prev) => [...prev, created])
+      toast.success(`«${created.nombre}» creado (${created.id}).`)
+      setAdding(false)
+    } catch (err) {
+      toast.error(err.message || 'No se pudo crear el artículo.')
+    } finally {
+      setCreating(false)
+    }
   }
 
   if (error) return <ErrorPanel error={error} onRetry={() => load()} />
@@ -138,9 +177,9 @@ export default function Dashboard() {
   return (
     <>
       <div className="grid gap-3 sm:grid-cols-3">
-        <StatCard label="Total unidades"   value={loading ? '…' : totals.total} />
-        <StatCard label="Disponibles"      value={loading ? '…' : totals.disp} tone="ok" />
-        <StatCard label="En arriendo"      value={loading ? '…' : totals.arr} tone="warn" />
+        <StatCard label="Total unidades" value={loading ? '…' : totals.total} />
+        <StatCard label="Disponibles"    value={loading ? '…' : totals.disp} tone="ok" />
+        <StatCard label="En arriendo"    value={loading ? '…' : totals.arr} tone="warn" />
       </div>
 
       <div className="mt-6 flex flex-wrap items-center justify-between gap-2">
@@ -152,16 +191,33 @@ export default function Dashboard() {
             </span>
           )}
         </div>
-        {sheetUrl && (
-          <a
-            href={sheetUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="btn-outline text-sm"
-          >
-            <ExternalLink className="h-4 w-4" /> Abrir hoja de cálculo
-          </a>
-        )}
+        <div className="flex items-center gap-2">
+          {canWrite && (
+            <button type="button" className="btn-primary text-sm" onClick={() => setAdding(true)}>
+              <PlusCircle className="h-4 w-4" /> Agregar artículo
+            </button>
+          )}
+          {sheetUrl && (
+            <a href={sheetUrl} target="_blank" rel="noopener noreferrer" className="btn-outline text-sm">
+              <ExternalLink className="h-4 w-4" /> Abrir hoja de cálculo
+            </a>
+          )}
+        </div>
+      </div>
+
+      {/* Búsqueda de la tabla (instantánea, sobre datos ya cargados) */}
+      <div className="mt-3">
+        <label className="relative block w-full sm:max-w-sm">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400" aria-hidden />
+          <input
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Buscar por nombre, ID, categoría o sub-categoría…"
+            className="input pl-9"
+            aria-label="Buscar en el inventario"
+          />
+        </label>
       </div>
 
       {!loading && !canWrite && (
@@ -184,15 +240,14 @@ export default function Dashboard() {
                 <th className="px-4 py-3">Sub-categoría</th>
                 <th className="px-4 py-3 text-right">Valor</th>
                 <th className="px-4 py-3 text-right">Total</th>
-                <th className="px-4 py-3 text-center">Disp.</th>
-                <th className="px-4 py-3 text-right">Arr.</th>
+                <th className="px-4 py-3 text-right">Disp.</th>
+                <th className="px-4 py-3 text-center">Arr.</th>
                 <th className="px-4 py-3 text-center">Imágenes</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-ink-800 bg-ink-900/30">
-              {items.map((it) => {
+              {filtered.map((it) => {
                 const sub = it.subcategoria1 || it.subcategoria2 || ''
-                const ceiling = Math.max(0, it.cantidad_total - it.en_arriendo)
                 const saving = savingIds.has(it.id)
                 return (
                   <tr key={it.id} className="hover:bg-ink-800/40">
@@ -205,44 +260,42 @@ export default function Dashboard() {
                     </td>
                     <td className="px-4 py-3">
                       {sub ? (
-                        <span className="rounded-full bg-sky-500/10 px-2 py-0.5 text-xs text-sky-300 ring-1 ring-sky-500/30">
-                          {sub}
-                        </span>
+                        <span className="rounded-full bg-sky-500/10 px-2 py-0.5 text-xs text-sky-300 ring-1 ring-sky-500/30">{sub}</span>
                       ) : (
                         <span className="text-ink-500">—</span>
                       )}
                     </td>
                     <td className="px-4 py-3 text-right">{formatCLP(it.valor_arriendo)}</td>
                     <td className="px-4 py-3 text-right">{it.cantidad_total}</td>
+                    <td className="px-4 py-3 text-right tabular-nums text-emerald-300">{it.disponibles}</td>
                     <td className="px-4 py-3">
                       <div className={`flex items-center justify-center gap-2 transition-opacity ${saving ? 'opacity-60' : ''}`}>
                         <button
                           type="button"
                           className="btn-ghost h-7 w-7 shrink-0 justify-center p-0 disabled:cursor-not-allowed disabled:opacity-30"
-                          onClick={() => adjustDisp(it, -1)}
-                          disabled={!canWrite || it.disponibles <= 0}
-                          aria-label={`Restar una unidad disponible de ${it.nombre}`}
-                          title={!canWrite ? 'Configura la service account para editar' : 'Restar 1 disponible'}
+                          onClick={() => adjustRent(it, -1)}
+                          disabled={!canWrite || it.en_arriendo <= 0}
+                          aria-label={`Marcar una unidad de ${it.nombre} como devuelta`}
+                          title={!canWrite ? 'Configura la service account para editar' : 'Devolver 1 (arriendo → disponible)'}
                         >
                           <Minus className="h-4 w-4" />
                         </button>
-                        <span className="inline-flex min-w-[2.5rem] items-center justify-center gap-1 tabular-nums text-emerald-300">
+                        <span className="inline-flex min-w-[2.5rem] items-center justify-center gap-1 tabular-nums text-yellow-300">
                           {saving && <Loader2 className="h-3 w-3 animate-spin text-ink-400" />}
-                          {it.disponibles}
+                          {it.en_arriendo}
                         </span>
                         <button
                           type="button"
                           className="btn-ghost h-7 w-7 shrink-0 justify-center p-0 disabled:cursor-not-allowed disabled:opacity-30"
-                          onClick={() => adjustDisp(it, +1)}
-                          disabled={!canWrite || it.disponibles >= ceiling}
-                          aria-label={`Sumar una unidad disponible de ${it.nombre}`}
-                          title={!canWrite ? 'Configura la service account para editar' : 'Sumar 1 disponible'}
+                          onClick={() => adjustRent(it, +1)}
+                          disabled={!canWrite || it.disponibles <= 0}
+                          aria-label={`Marcar una unidad de ${it.nombre} como arrendada`}
+                          title={!canWrite ? 'Configura la service account para editar' : 'Arrendar 1 (disponible → arriendo)'}
                         >
                           <Plus className="h-4 w-4" />
                         </button>
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-right text-yellow-300">{it.en_arriendo}</td>
                     <td className="px-4 py-3 text-center">
                       <button
                         type="button"
@@ -257,16 +310,20 @@ export default function Dashboard() {
                   </tr>
                 )
               })}
+              {filtered.length === 0 && (
+                <tr>
+                  <td colSpan={9} className="px-4 py-8 text-center text-ink-400">
+                    No hay artículos que coincidan con «{query}».
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
       )}
 
-      <ImageManagerModal
-        open={Boolean(imagesFor)}
-        item={imagesFor}
-        onClose={() => setImagesFor(null)}
-      />
+      <ImageManagerModal open={Boolean(imagesFor)} item={imagesFor} onClose={() => setImagesFor(null)} />
+      <AddItemModal open={adding} items={items} saving={creating} onCancel={() => setAdding(false)} onSubmit={handleCreate} />
     </>
   )
 }

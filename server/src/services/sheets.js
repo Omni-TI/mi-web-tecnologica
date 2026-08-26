@@ -404,9 +404,36 @@ export function invalidateItemsCache() {
   cache = { at: 0, items: [] }
 }
 
+/**
+ * Prefijo de ID derivado del nombre (opción a): 1ª palabra (hasta 4 letras) +
+ * 3 primeras letras de la 2ª palabra, capitalizadas. Ej. "Mesa comedor…" → "MesaCom".
+ */
+function idPrefixFromName(nombre) {
+  const words = String(nombre || '')
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-zA-Z0-9\s]/g, ' ')
+    .trim().split(/\s+/).filter(Boolean)
+  const cap = (w) => (w ? w.charAt(0).toUpperCase() + w.slice(1).toLowerCase() : '')
+  const p1 = cap(words[0] || 'Item').slice(0, 4)
+  const p2 = words[1] ? cap(words[1].slice(0, 3)) : ''
+  return (p1 + p2) || 'Item'
+}
+
+/** Genera un ID único: prefijo del nombre + correlativo de 2 dígitos. */
+function nextItemId(all, nombre) {
+  const prefix = idPrefixFromName(nombre)
+  const re = new RegExp(`^${prefix}(\\d+)$`, 'i')
+  let max = 0
+  for (const it of all) {
+    const m = re.exec(String(it.id || ''))
+    if (m) max = Math.max(max, Number.parseInt(m[1], 10))
+  }
+  return `${prefix}${String(max + 1).padStart(2, '0')}`
+}
+
 export async function createItem(input) {
   const all = await readAllRaw()
-  const id = `IT-${Date.now().toString(36).toUpperCase()}`
+  const id = nextItemId(all, input?.nombre)
   const parsed = ItemSchema.parse({
     id,
     fecha_creacion: new Date().toISOString().slice(0, 10),
@@ -471,7 +498,7 @@ export async function setDisponibles(id, value) {
 
   switch (config.sheetsMode) {
     case 'sheets-api':
-      await writeDisponiblesCell(id, next)
+      await writeItemCells(id, { disponibles: next })
       break
     case 'public-csv': {
       const e = new Error(
@@ -493,11 +520,64 @@ export async function setDisponibles(id, value) {
 }
 
 /**
- * Escribe SOLO la celda de disponibles de la fila cuyo 'id' coincide.
- * Localiza fila y columna leyendo la fila de encabezados y la columna 'id',
- * así es robusto ante filas en blanco o reordenamientos de columnas.
+ * Traspaso de una unidad entre disponibles y en_arriendo (control +/- del panel).
+ * Escribe AMBAS celdas (disponibles y en_arriendo) de la fila del item.
+ *
+ * Reglas: ambos enteros >= 0 y disponibles + en_arriendo <= cantidad_total.
+ * El frontend hace el traspaso (−1 en uno, +1 en el otro), por lo que la suma
+ * se preserva y el total se mantiene igual a cantidad_total.
  */
-async function writeDisponiblesCell(id, value) {
+export async function setStock(id, disponibles, enArriendo) {
+  const d = Number(disponibles)
+  const a = Number(enArriendo)
+  if (!Number.isInteger(d) || d < 0 || !Number.isInteger(a) || a < 0) {
+    const e = new Error('disponibles y en_arriendo deben ser enteros mayores o iguales a 0'); e.status = 400; throw e
+  }
+
+  const all = await readAllRaw()
+  const idx = all.findIndex((i) => i.id === id)
+  if (idx === -1) { const e = new Error('Item no encontrado'); e.status = 404; throw e }
+
+  const item = all[idx]
+  if (d + a > item.cantidad_total) {
+    const e = new Error(`disponibles + en_arriendo (${d + a}) no puede superar cantidad_total (${item.cantidad_total}).`)
+    e.status = 400
+    throw e
+  }
+
+  switch (config.sheetsMode) {
+    case 'sheets-api':
+      await writeItemCells(id, { disponibles: d, en_arriendo: a })
+      break
+    case 'public-csv': {
+      const e = new Error(
+        'La hoja está en modo solo-lectura (CSV público). Para editar el inventario ' +
+        'desde el panel necesitas configurar una service account con permiso de edición ' +
+        '(ver docs/GOOGLE_SHEETS_SETUP.md).',
+      )
+      e.status = 400
+      throw e
+    }
+    default: {
+      all[idx] = { ...item, disponibles: d, en_arriendo: a }
+      writeLocalItems(all)
+    }
+  }
+
+  invalidateItemsCache()
+  return { ...item, disponibles: d, en_arriendo: a }
+}
+
+/**
+ * Escribe una o más celdas de la fila cuyo 'id' coincide, alineando cada campo
+ * a su columna real en la hoja del cliente. Localiza fila/columnas leyendo la
+ * fila de encabezados y la columna 'id' — robusto ante filas en blanco o
+ * reordenamiento de columnas.
+ *
+ * @param {string} id
+ * @param {Record<string, number|string>} fieldValues  campo interno → valor
+ */
+async function writeItemCells(id, fieldValues) {
   const client = getClient()
   if (!client) throw new Error('Sheets API no configurado')
   const tab = await getTabName(client)
@@ -511,24 +591,29 @@ async function writeDisponiblesCell(id, value) {
 
   const norm = rows[0].map(normHeader)
   const idCol = norm.findIndex((h) => fieldForHeader(h) === 'id')
-  const dispCol = norm.findIndex((h) => fieldForHeader(h) === 'disponibles')
   if (idCol === -1) throw new Error('No se encontró la columna "id" en la hoja')
-  if (dispCol === -1) throw new Error('No se encontró la columna "disponible" en la hoja')
 
   let sheetRow = -1
   for (let r = 1; r < rows.length; r++) {
     if (String(rows[r][idCol] ?? '').trim() === String(id).trim()) {
-      sheetRow = r + 1 // +1 → índice de fila 1-based en la hoja
+      sheetRow = r + 1 // 1-based
       break
     }
   }
   if (sheetRow === -1) throw new Error('No se encontró la fila del item en la hoja')
 
-  const col = colLetter(dispCol + 1)
-  await client.spreadsheets.values.update({
+  // Construye una celda por campo pedido (que exista como columna en la hoja).
+  const data = []
+  for (const [field, value] of Object.entries(fieldValues)) {
+    const colIdx = norm.findIndex((h) => fieldForHeader(h) === field)
+    if (colIdx === -1) continue // la hoja no tiene esa columna: se omite
+    const col = colLetter(colIdx + 1)
+    data.push({ range: `${tab}!${col}${sheetRow}`, values: [[value]] })
+  }
+  if (data.length === 0) throw new Error('Ninguna columna coincide en la hoja')
+
+  await client.spreadsheets.values.batchUpdate({
     spreadsheetId: config.sheets.id,
-    range: `${tab}!${col}${sheetRow}`,
-    valueInputOption: 'RAW',
-    requestBody: { values: [[value]] },
+    requestBody: { valueInputOption: 'RAW', data },
   })
 }

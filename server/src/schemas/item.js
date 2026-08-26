@@ -56,3 +56,12 @@ export const ItemUpdateSchema = ItemBase
 export const DisponiblesSchema = z.object({
   disponibles: z.number().int().nonnegative(),
 })
+
+/**
+ * Traspaso disponibles ↔ en_arriendo (botones +/- del panel).
+ * El límite superior (disp + arr <= cantidad_total) se valida en el servicio.
+ */
+export const StockSchema = z.object({
+  disponibles: z.number().int().nonnegative(),
+  en_arriendo: z.number().int().nonnegative(),
+})

@@ -1,10 +1,10 @@
 import { Router } from 'express'
 
 import { config } from '../config/env.js'
-import { getItems, createItem, updateItem, deleteItem, setDisponibles } from '../services/sheets.js'
+import { getItems, createItem, updateItem, deleteItem, setDisponibles, setStock } from '../services/sheets.js'
 import { requireAuth } from '../middleware/auth.js'
 import { validateBody } from '../middleware/validate.js'
-import { ItemCreateSchema, ItemUpdateSchema, DisponiblesSchema } from '../schemas/item.js'
+import { ItemCreateSchema, ItemUpdateSchema, DisponiblesSchema, StockSchema } from '../schemas/item.js'
 import { audit } from '../services/audit.js'
 
 const router = Router()
@@ -89,6 +89,27 @@ router.patch('/:id/disponibles', requireAuth, validateBody(DisponiblesSchema), a
       action: 'item.disponibles',
       entityId: updated.id,
       changes: { disponibles: updated.disponibles },
+      ip: req.ip,
+    })
+    res.json(updated)
+  } catch (err) {
+    if (err.status) return res.status(err.status).json({ error: err.message })
+    next(err)
+  }
+})
+
+/**
+ * Traspaso disponibles ↔ en_arriendo (botones +/- en la columna Arriendo).
+ * Escribe ambas celdas de la fila. Protegido por auth admin.
+ */
+router.patch('/:id/stock', requireAuth, validateBody(StockSchema), async (req, res, next) => {
+  try {
+    const updated = await setStock(req.params.id, req.body.disponibles, req.body.en_arriendo)
+    await audit({
+      user: req.user.username,
+      action: 'item.stock',
+      entityId: updated.id,
+      changes: { disponibles: updated.disponibles, en_arriendo: updated.en_arriendo },
       ip: req.ip,
     })
     res.json(updated)

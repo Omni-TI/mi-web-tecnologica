@@ -76,6 +76,8 @@ export const api = {
   updateItem: (id, patch) => request(`/api/items/${encodeURIComponent(id)}`, { method: 'PATCH', body: patch }),
   setDisponibles: (id, disponibles) =>
     request(`/api/items/${encodeURIComponent(id)}/disponibles`, { method: 'PATCH', body: { disponibles } }),
+  setStock: (id, disponibles, en_arriendo) =>
+    request(`/api/items/${encodeURIComponent(id)}/stock`, { method: 'PATCH', body: { disponibles, en_arriendo } }),
   deleteItem: (id) => request(`/api/items/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 
   audit: (signal) => request('/api/audit', { signal }),
