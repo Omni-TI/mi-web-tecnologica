@@ -18,6 +18,7 @@ export default function ItemCard({ item, onOpen, compact = false }) {
     noDisponible: item.no_disponible,
   })
   const StockIcon = STOCK_ICON[stock.icon]
+  const unavailable = stock.level === 'unavailable'
   const clickable = typeof onOpen === 'function'
   const clickProps = clickable
     ? {
@@ -41,10 +42,10 @@ export default function ItemCard({ item, onOpen, compact = false }) {
             src={item.imagen_url}
             alt={item.nombre}
             loading="lazy"
-            className="h-full w-full object-cover"
+            className={`h-full w-full object-cover ${unavailable ? 'opacity-50 grayscale' : ''}`}
           />
         ) : (
-          <Zap className={compact ? 'h-9 w-9' : 'h-12 w-12'} aria-hidden />
+          <Zap className={`${compact ? 'h-9 w-9' : 'h-12 w-12'} ${unavailable ? 'opacity-50' : ''}`} aria-hidden />
         )}
         <span
           className={`absolute right-2 top-2 inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-semibold ${stock.tone}`}

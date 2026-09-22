@@ -5,8 +5,8 @@
  *   Con `pocos: 3` → 1 rojo · 2–3 naranjo · 4+ verde.
  *
  * Reglas (en orden):
- *   - Bandera «No disponible» ON → nunca mensaje negativo:
- *       disponibles>0 → «Disponible» (verde) · =0 → «Consultar» (gris).
+ *   - Bandera «No disponible» ON → «No disponible» (gris), sin importar el stock:
+ *       el artículo se muestra en el catálogo pero NO se ofrece para arriendo.
  *   - disponibles === 0 (sin esa bandera) → «Sin stock» (gris).
  *   - «Artículo único» ON  o  inventario de 1 sola unidad (total=1) → «Disponible».
  *   - disponibles === 1 (multi-unidad) → «¡Último disponible!» (rojo).
@@ -41,11 +41,10 @@ export function stockStatus(disponibles, opts = {}) {
   const noDisp = Boolean(opts.noDisponible)
   const thresholds = opts.thresholds || STOCK_THRESHOLDS
 
-  // Bandera «No disponible»: nunca mostramos mensaje negativo.
+  // Bandera «No disponible»: el artículo se muestra pero NO está disponible para
+  // arriendo, sin importar el stock. Prevalece sobre cualquier otra regla.
   if (noDisp) {
-    return n > 0
-      ? { level: 'ok', label: 'Disponible', icon: 'check', tone: TONE.green }
-      : { level: 'muted', label: 'Consultar', icon: 'info', tone: TONE.gray }
+    return { level: 'unavailable', label: 'No disponible', icon: 'x', tone: TONE.gray }
   }
 
   if (n <= 0) {
