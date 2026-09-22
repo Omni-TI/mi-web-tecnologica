@@ -14,7 +14,7 @@ import { X } from 'lucide-react'
  * La creación real (nueva fila en la hoja) la hace el backend vía onSubmit.
  */
 export default function AddItemModal({ open, items = [], saving, onCancel, onSubmit }) {
-  const empty = { nombre: '', categoria: '', subcategoria1: '', valor_arriendo: '', cantidad_total: '' }
+  const empty = { nombre: '', categoria: '', subcategoria1: '', valor_arriendo: '', cantidad_total: '', descripcion: '', garantia: '' }
   const [form, setForm] = useState(empty)
   const [errors, setErrors] = useState({})
 
@@ -64,6 +64,8 @@ export default function AddItemModal({ open, items = [], saving, onCancel, onSub
       cantidad_total: total,
       disponibles: total,   // inicia todo disponible
       en_arriendo: 0,       // nada arrendado
+      descripcion: form.descripcion.trim(),
+      garantia: form.garantia.trim(),
       activo: true,
     })
   }
@@ -118,6 +120,25 @@ export default function AddItemModal({ open, items = [], saving, onCancel, onSub
                     <input type="number" min={1} step={1} className="input" value={form.cantidad_total} onChange={set('cantidad_total')} />
                   </Field>
                 </div>
+
+                <Field label="Descripción (opcional)">
+                  <textarea
+                    className="input min-h-[72px] resize-y"
+                    rows={3}
+                    value={form.descripcion}
+                    onChange={set('descripcion')}
+                    placeholder="Detalle del artículo, materiales, estado, medidas…"
+                  />
+                </Field>
+                <Field label="Garantía (opcional)">
+                  <textarea
+                    className="input min-h-[56px] resize-y"
+                    rows={2}
+                    value={form.garantia}
+                    onChange={set('garantia')}
+                    placeholder="Condiciones de arriendo, responsabilidad por daños…"
+                  />
+                </Field>
 
                 <p className="rounded-md border border-ink-800 bg-ink-950/50 px-3 py-2 text-xs text-ink-400">
                   Al crear: <span className="text-emerald-300">disponibles = cantidad total</span> y{' '}

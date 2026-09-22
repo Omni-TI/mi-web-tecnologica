@@ -224,6 +224,8 @@ export default function Dashboard() {
                 <th className="px-4 py-3">Nombre</th>
                 <th className="px-4 py-3">Categoría</th>
                 <th className="px-4 py-3">Sub-categoría</th>
+                <th className="px-4 py-3">Descripción</th>
+                <th className="px-4 py-3">Garantía</th>
                 <th className="px-4 py-3 text-right">Valor</th>
                 <th className="px-4 py-3 text-right">Total</th>
                 <th className="px-4 py-3 text-right">Disp.</th>
@@ -247,6 +249,24 @@ export default function Dashboard() {
                     <td className="px-4 py-3">
                       {sub ? (
                         <span className="rounded-full bg-sky-500/10 px-2 py-0.5 text-xs text-sky-300 ring-1 ring-sky-500/30">{sub}</span>
+                      ) : (
+                        <span className="text-ink-500">—</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      {it.descripcion ? (
+                        <span className="block max-w-[16rem] truncate text-xs text-ink-300" title={it.descripcion}>
+                          {it.descripcion}
+                        </span>
+                      ) : (
+                        <span className="text-ink-500">—</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      {it.garantia ? (
+                        <span className="block max-w-[14rem] truncate text-xs text-ink-300" title={it.garantia}>
+                          {it.garantia}
+                        </span>
                       ) : (
                         <span className="text-ink-500">—</span>
                       )}
@@ -298,7 +318,7 @@ export default function Dashboard() {
               })}
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={9} className="px-4 py-8 text-center text-ink-400">
+                  <td colSpan={11} className="px-4 py-8 text-center text-ink-400">
                     No hay artículos que coincidan con «{query}».
                   </td>
                 </tr>

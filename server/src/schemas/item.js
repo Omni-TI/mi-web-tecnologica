@@ -33,6 +33,16 @@ const ItemBase = z.object({
   // Hasta 3 URLs de imagen por artículo. Preparado para el almacenamiento real
   // (p. ej. ImageKit); por ahora suele venir vacío y el frontend usa placeholders.
   imagenes: z.array(z.string()).max(3).default([]),
+  // Descripción y garantía del artículo (columnas "Descripcion" y "Garantia").
+  descripcion: z.string().trim().max(2000).default(''),
+  garantia: z.string().trim().max(1000).default(''),
+  // Banderas de inventario (columnas "No mostrar", "No disponible", "Articulo unico").
+  // - no_mostrar: oculta el artículo del catálogo público y de los destacados.
+  // - no_disponible: lo muestra pero marcado como no arrendable ("Consultar").
+  // - articulo_unico: pieza única (afecta el texto de disponibilidad).
+  no_mostrar: z.boolean().default(false),
+  no_disponible: z.boolean().default(false),
+  articulo_unico: z.boolean().default(false),
   fecha_creacion: z.string().default(''),
   activo: z.boolean().default(true),
 })
