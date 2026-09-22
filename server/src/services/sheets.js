@@ -454,9 +454,45 @@ function writeLocalItems(items) {
 
 /* ───────────────────────── Dispatch por modo ───────────────────────── */
 
+/** Traduce un fallo de lectura de Sheets en un mensaje accionable. */
+function describeSheetsReadError(err) {
+  const status = err?.code || err?.response?.status
+  const url = String(err?.response?.config?.url || err?.config?.url || err?.response?.request?.responseURL || '')
+  if (url.includes('oauth2') || url.includes('token')) {
+    return 'Google rechazó la credencial de la service account (token ' + (status || '400') + '). ' +
+      'Regenera la clave JSON en Google Cloud (la cuenta de servicio → Claves → Agregar clave → JSON), ' +
+      'reemplaza server/secrets/service-account.json y verifica que la hora del sistema esté correcta. ' +
+      'Revisa el diagnóstico en /api/health.'
+  }
+  if (status === 403) {
+    return 'Google denegó el acceso a la hoja (403). Habilita "Google Sheets API" en tu proyecto ' +
+      'y comparte la hoja con la service account como Lector/Editor.'
+  }
+  if (status === 404) {
+    return 'No se encontró la hoja (404). Revisa GOOGLE_SHEETS_ID en server/.env.'
+  }
+  return `No se pudo leer Google Sheets: ${err?.message || 'error desconocido'}.`
+}
+
 async function readAllRaw() {
   switch (config.sheetsMode) {
-    case 'sheets-api': return fetchFromSheetsApi()
+    case 'sheets-api': {
+      try {
+        return await fetchFromSheetsApi()
+      } catch (err) {
+        const msg = describeSheetsReadError(err)
+        console.error('[sheets] lectura vía API falló:', msg)
+        // Respaldo de SOLO LECTURA: si la hoja está compartida como pública,
+        // sirve el catálogo por CSV mientras se arregla la credencial de escritura.
+        try {
+          const items = await fetchFromPublicCsv()
+          console.warn('[sheets] usando CSV público como respaldo de lectura del catálogo.')
+          return items
+        } catch {
+          const e = new Error(msg); e.status = 502; throw e
+        }
+      }
+    }
     case 'public-csv': return fetchFromPublicCsv()
     default:           return readLocalItems()
   }

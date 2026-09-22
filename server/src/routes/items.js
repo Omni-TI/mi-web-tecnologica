@@ -24,7 +24,10 @@ router.get('/', async (_req, res, next) => {
       count: items.length,
       items,
     })
-  } catch (err) { next(err) }
+  } catch (err) {
+    if (err.status) return res.status(err.status).json({ error: err.message })
+    next(err)
+  }
 })
 
 router.get('/categories', async (_req, res, next) => {
