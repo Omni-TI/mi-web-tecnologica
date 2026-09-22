@@ -1,10 +1,13 @@
 import { Fragment, useCallback, useEffect, useState } from 'react'
 import { Dialog, Transition } from '@headlessui/react'
 import useEmblaCarousel from 'embla-carousel-react'
-import { X, ChevronLeft, ChevronRight, PackageCheck, PackageX } from 'lucide-react'
+import { X, ChevronLeft, ChevronRight, PackageCheck, PackageX, AlertTriangle, Info } from 'lucide-react'
 
 import { formatCLP } from '../../lib/format.js'
 import { getItemImages } from '../../lib/itemImages.js'
+import { stockStatus } from '../../lib/stock.js'
+
+const STOCK_ICON = { x: PackageX, alert: AlertTriangle, check: PackageCheck, info: Info }
 
 /**
  * Modal de detalle del artículo.
@@ -39,7 +42,12 @@ export default function ItemDetailModal({ item, open, onClose }) {
 
   if (!item) return null
 
-  const disponible = item.disponibles > 0
+  const stock = stockStatus(item.disponibles, {
+    cantidadTotal: item.cantidad_total,
+    articuloUnico: item.articulo_unico,
+    noDisponible: item.no_disponible,
+  })
+  const StockIcon = STOCK_ICON[stock.icon]
   const sub = [item.subcategoria1, item.subcategoria2].filter(Boolean).join(' · ')
   const multiple = images.length > 1
 
@@ -121,14 +129,10 @@ export default function ItemDetailModal({ item, open, onClose }) {
                     {item.nombre}
                   </Dialog.Title>
                   <span
-                    className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold ${
-                      disponible
-                        ? 'bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-500/40'
-                        : 'bg-red-500/15 text-red-300 ring-1 ring-red-500/40'
-                    }`}
+                    className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold ${stock.tone}`}
                   >
-                    {disponible ? <PackageCheck className="h-3.5 w-3.5" /> : <PackageX className="h-3.5 w-3.5" />}
-                    {disponible ? `Disponible (${item.disponibles})` : 'Sin stock'}
+                    <StockIcon className="h-3.5 w-3.5" aria-hidden />
+                    {stock.label}
                   </span>
                 </div>
 

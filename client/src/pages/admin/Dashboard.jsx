@@ -75,14 +75,6 @@ export default function Dashboard() {
     return () => { Object.values(t).forEach(clearTimeout) }
   }, [])
 
-  // Totales sobre TODO el inventario (no la vista filtrada).
-  const totals = useMemo(() => items.reduce((acc, it) => {
-    acc.total += it.cantidad_total
-    acc.disp += it.disponibles
-    acc.arr += it.en_arriendo
-    return acc
-  }, { total: 0, disp: 0, arr: 0 }), [items])
-
   // Búsqueda instantánea: nombre, ID, categoría y sub-categoría.
   const filtered = useMemo(() => {
     const q = norm(query).trim()
@@ -176,13 +168,7 @@ export default function Dashboard() {
 
   return (
     <>
-      <div className="grid gap-3 sm:grid-cols-3">
-        <StatCard label="Total unidades" value={loading ? '…' : totals.total} />
-        <StatCard label="Disponibles"    value={loading ? '…' : totals.disp} tone="ok" />
-        <StatCard label="En arriendo"    value={loading ? '…' : totals.arr} tone="warn" />
-      </div>
-
-      <div className="mt-6 flex flex-wrap items-center justify-between gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <h2 className="font-display text-lg font-semibold">Inventario</h2>
           {source && (
@@ -325,15 +311,5 @@ export default function Dashboard() {
       <ImageManagerModal open={Boolean(imagesFor)} item={imagesFor} onClose={() => setImagesFor(null)} />
       <AddItemModal open={adding} items={items} saving={creating} onCancel={() => setAdding(false)} onSubmit={handleCreate} />
     </>
-  )
-}
-
-function StatCard({ label, value, tone }) {
-  const color = tone === 'ok' ? 'text-emerald-300' : tone === 'warn' ? 'text-yellow-300' : 'text-ink-50'
-  return (
-    <div className="card p-4">
-      <div className="text-xs uppercase tracking-wider text-ink-400">{label}</div>
-      <div className={`mt-1 font-display text-2xl font-bold ${color}`}>{value}</div>
-    </div>
   )
 }
