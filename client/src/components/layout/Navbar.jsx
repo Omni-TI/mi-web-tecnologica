@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Link, NavLink, useNavigate } from 'react-router-dom'
 import { Menu, X, Search, Zap } from 'lucide-react'
+import ThemeToggle from '../ui/ThemeToggle.jsx'
 
 const NAV_LINKS = [
   { to: '/catalogo',       label: 'Catálogo' },
@@ -76,14 +77,19 @@ export default function Navbar() {
               {l.label}
             </NavLink>
           ))}
+          <ThemeToggle className="ml-1" />
           <Link to="/admin/login" className="btn-outline ml-2">
             Admin
           </Link>
         </nav>
 
+        {/* Móvil: toggle de tema siempre visible + botón de menú */}
+        <div className="ml-auto flex items-center md:hidden">
+          <ThemeToggle />
+        </div>
         <button
           type="button"
-          className="ml-auto rounded-md p-2 text-ink-200 hover:bg-ink-800 md:hidden"
+          className="rounded-md p-2 text-ink-200 hover:bg-ink-800 md:hidden"
           onClick={() => setOpen((v) => !v)}
           aria-expanded={open}
           aria-controls="mobile-nav"

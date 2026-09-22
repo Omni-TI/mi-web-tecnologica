@@ -3,12 +3,48 @@
 @tailwind utilities;
 
 @layer base {
+  /* ===== Tema OSCURO (por defecto) =====
+     Rampa neutra "ink" como tripletas RGB (para rgb(var() / alpha) en Tailwind).
+     Convención: números bajos = texto, números altos = fondos. */
   :root {
     color-scheme: dark;
+    --ink-50:  250 250 249;
+    --ink-100: 245 245 244;
+    --ink-200: 231 229 228;
+    --ink-300: 214 211 209;
+    --ink-400: 168 162 158;
+    --ink-500: 120 113 108;
+    --ink-600: 87 83 78;
+    --ink-700: 68 64 60;
+    --ink-800: 41 37 36;
+    --ink-900: 28 25 23;
+    --ink-950: 12 10 9;
+  }
+
+  /* ===== Tema CLARO ===== rampa invertida: fondos claros, texto oscuro.
+     Los acentos (brand/sky) no cambian. */
+  html.light {
+    color-scheme: light;
+    --ink-50:  12 10 9;
+    --ink-100: 28 25 23;
+    --ink-200: 41 37 36;
+    --ink-300: 68 64 60;
+    --ink-400: 87 83 78;
+    --ink-500: 120 113 108;
+    --ink-600: 168 162 158;
+    --ink-700: 214 211 209;
+    --ink-800: 231 229 228;
+    --ink-900: 245 245 244;
+    --ink-950: 255 255 255;
   }
 
   html, body, #root {
     min-height: 100%;
+  }
+
+  /* Evita el destello de transición al cambiar de tema. */
+  html.theme-changing * {
+    transition: none !important;
   }
 
   /* Contraste accesible por defecto en focus visible (WCAG 2.4.7) */
@@ -18,7 +54,7 @@
 
   ::selection {
     background: theme('colors.brand.600');
-    color: theme('colors.ink.950');
+    color: #0C0A09; /* texto oscuro fijo sobre el ámbar en ambos temas */
   }
 }
 
@@ -28,7 +64,9 @@
            transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed;
   }
   .btn-primary {
-    @apply btn bg-brand-600 text-ink-950 hover:bg-brand-500 hover:shadow-glow active:scale-[0.98];
+    /* texto oscuro fijo (#0C0A09) para conservar contraste sobre el ámbar
+       tanto en tema oscuro como claro */
+    @apply btn bg-brand-600 text-[#0C0A09] hover:bg-brand-500 hover:shadow-glow active:scale-[0.98];
   }
   .btn-ghost {
     @apply btn text-ink-100 hover:bg-ink-800/60;
