@@ -1,5 +1,5 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
-import { LogOut, LayoutGrid, Zap, ClipboardList } from 'lucide-react'
+import { LogOut, LayoutGrid, Zap, ClipboardList, BarChart3 } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { useAuth } from '../../hooks/useAuth.jsx'
@@ -32,6 +32,16 @@ export default function AdminLayout() {
             }
           >
             <LayoutGrid className="h-4 w-4" /> Inventario
+          </NavLink>
+          <NavLink
+            to="/admin/dashboard"
+            className={({ isActive }) =>
+              `flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium ${
+                isActive ? 'bg-ink-800 text-brand-400' : 'text-ink-200 hover:bg-ink-800'
+              }`
+            }
+          >
+            <BarChart3 className="h-4 w-4" /> Dashboard
           </NavLink>
           <NavLink
             to="/admin/auditoria"

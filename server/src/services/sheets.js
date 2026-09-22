@@ -727,7 +727,18 @@ export async function setStock(id, disponibles, enArriendo) {
   }
 
   invalidateItemsCache()
-  return { ...item, disponibles: d, en_arriendo: a }
+
+  // Metadatos del movimiento para la auditoría (la ruta extrae _mov y no lo
+  // envía al frontend). deltaArr > 0 => se arrendaron unidades; < 0 => se devolvieron.
+  const deltaArr = a - item.en_arriendo
+  const _mov = {
+    tipo: deltaArr > 0 ? 'arriendo' : deltaArr < 0 ? 'devolucion' : 'ajuste',
+    unidades: Math.abs(deltaArr),
+    en_arriendo: a,
+    disponibles: d,
+    cantidad_total: item.cantidad_total,
+  }
+  return { ...item, disponibles: d, en_arriendo: a, _mov }
 }
 
 /**

@@ -16,6 +16,7 @@ const Contact       = lazy(() => import('./pages/Contact.jsx'))
 const Privacy       = lazy(() => import('./pages/Privacy.jsx'))
 const AdminLogin    = lazy(() => import('./pages/admin/Login.jsx'))
 const AdminDashboard = lazy(() => import('./pages/admin/Dashboard.jsx'))
+const AdminStats    = lazy(() => import('./pages/admin/Stats.jsx'))
 const AdminAudit    = lazy(() => import('./pages/admin/Audit.jsx'))
 
 const Loader = () => (
@@ -41,6 +42,7 @@ export default function App() {
           <Route element={<AuthGuard />}>
             <Route element={<AdminLayout />}>
               <Route index element={<AdminDashboard />} />
+              <Route path="dashboard" element={<AdminStats />} />
               <Route path="auditoria" element={<AdminAudit />} />
             </Route>
           </Route>

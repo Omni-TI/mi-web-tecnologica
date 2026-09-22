@@ -65,7 +65,19 @@ Esquemas en `server/src/schemas/item.js` (zod, compartido conceptualmente con
 el client). Columnas de la hoja / campos del item:
 
 `id, nombre, categoria, subcategoria1, subcategoria2, valor_arriendo,
-cantidad_total, disponibles, en_arriendo, imagen_url, imagenes[], fecha_creacion, activo`
+cantidad_total, disponibles, en_arriendo, imagen_url, imagenes[], descripcion,
+garantia, no_mostrar, no_disponible, articulo_unico, fecha_creacion, activo`
+
+- `descripcion` / `garantia`: columnas `Descripcion` / `Garantia` de la hoja
+  (texto libre). Se muestran en el detalle del artículo y en el panel admin.
+- Banderas (columnas `No mostrar` / `No disponible` / `Articulo unico`, valores
+  `TRUE`/vacío; el parseo tolera `SI`/`1`/`X`):
+  - `no_mostrar`: oculta el artículo de TODAS las vistas públicas. La regla está
+    centralizada en `hooks/useItems.js` (que usan Home y catálogo); el admin usa
+    `api.getItems` directo y por eso sigue viéndolo para gestionarlo.
+  - `no_disponible`: se muestra pero se ordena al final del catálogo y aparece
+    como «Consultar» (ver `lib/stock.js` + `hooks/useCatalogSearch.js`).
+  - `articulo_unico`: pieza única; afecta el texto de disponibilidad.
 
 - Regla de negocio **solo en escritura admin**: `disponibles + en_arriendo <= cantidad_total`
   (desigualdad; unidades pueden estar en reparación/reserva). En **lectura** el
@@ -88,7 +100,8 @@ Auth admin (`requireAuth`):
 - `POST /api/items` (crear) · `PATCH /api/items/:id` (editar) · `DELETE /api/items/:id`
 - `PATCH /api/items/:id/disponibles` — ajuste puntual de disponibles.
 - `PATCH /api/items/:id/stock` — **traspaso** disponibles ↔ en_arriendo
-  (escribe ambas celdas; total constante).
+  (escribe ambas celdas; total constante). La auditoría registra el movimiento
+  enriquecido (tipo arriendo/devolución, unidades, estado resultante).
 - `GET  /api/audit` — bitácora de acciones admin.
 
 Escritura a Sheets: celdas puntuales vía `spreadsheets.values.update/batchUpdate`
@@ -100,7 +113,7 @@ localizando la fila por la columna `id` (`writeItemCells` en
 ```
 client/src/
   pages/            Home, Gallery (catálogo), Contact, Social, Privacy, NotFound
-  pages/admin/      Login, Dashboard (inventario), Audit
+  pages/admin/      Login, Dashboard (inventario), Stats (gráficos), Audit
   components/
     gallery/        CategoryMenu, ItemCard, ItemDetailModal (carrusel Embla)
     admin/          AddItemModal, ImageManagerModal, ItemFormModal
