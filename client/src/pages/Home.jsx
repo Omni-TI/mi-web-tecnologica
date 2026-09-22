@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import ItemCard from '../components/gallery/ItemCard.jsx'
 import LoadingGrid from '../components/ui/LoadingGrid.jsx'
@@ -6,9 +7,21 @@ import CategoryTiles from '../components/home/CategoryTiles.jsx'
 import SocialProof from '../components/home/SocialProof.jsx'
 import { useItems } from '../hooks/useItems.js'
 
+/** Selección aleatoria de hasta n elementos (Fisher-Yates sobre una copia). */
+function pickRandom(list, n) {
+  const arr = [...list]
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    ;[arr[i], arr[j]] = [arr[j], arr[i]]
+  }
+  return arr.slice(0, n)
+}
+
 export default function Home() {
   const { items, loading } = useItems()
-  const highlights = items.slice(0, 4)
+  // Destacados aleatorios (los "No mostrar" ya vienen excluidos por useItems).
+  // Se recalculan solo cuando cambia el conjunto de artículos, no en cada render.
+  const highlights = useMemo(() => pickRandom(items, 4), [items])
 
   return (
     <>

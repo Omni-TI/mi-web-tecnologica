@@ -14,7 +14,7 @@ import { X } from 'lucide-react'
  * La creación real (nueva fila en la hoja) la hace el backend vía onSubmit.
  */
 export default function AddItemModal({ open, items = [], saving, onCancel, onSubmit }) {
-  const empty = { nombre: '', categoria: '', subcategoria1: '', valor_arriendo: '', cantidad_total: '', descripcion: '', garantia: '' }
+  const empty = { nombre: '', categoria: '', subcategoria1: '', valor_arriendo: '', cantidad_total: '', descripcion: '', garantia: '', articulo_unico: false }
   const [form, setForm] = useState(empty)
   const [errors, setErrors] = useState({})
 
@@ -66,6 +66,7 @@ export default function AddItemModal({ open, items = [], saving, onCancel, onSub
       en_arriendo: 0,       // nada arrendado
       descripcion: form.descripcion.trim(),
       garantia: form.garantia.trim(),
+      articulo_unico: form.articulo_unico,
       activo: true,
     })
   }
@@ -117,9 +118,27 @@ export default function AddItemModal({ open, items = [], saving, onCancel, onSub
                     <input type="number" min={1} step={500} className="input" value={form.valor_arriendo} onChange={set('valor_arriendo')} />
                   </Field>
                   <Field label="Cantidad total" error={errors.cantidad_total}>
-                    <input type="number" min={1} step={1} className="input" value={form.cantidad_total} onChange={set('cantidad_total')} />
+                    <input type="number" min={1} step={1} className="input disabled:opacity-60" value={form.cantidad_total}
+                           onChange={set('cantidad_total')} disabled={form.articulo_unico} />
                   </Field>
                 </div>
+
+                <label className="flex items-start gap-2 rounded-md border border-ink-800 bg-ink-950/40 px-3 py-2">
+                  <input
+                    type="checkbox"
+                    className="mt-0.5 h-4 w-4 accent-brand-500"
+                    checked={form.articulo_unico}
+                    onChange={(e) => setForm((f) => ({
+                      ...f,
+                      articulo_unico: e.target.checked,
+                      cantidad_total: e.target.checked ? '1' : f.cantidad_total,
+                    }))}
+                  />
+                  <span className="text-sm text-ink-200">
+                    Artículo único
+                    <span className="block text-xs text-ink-400">Pieza única: fija la cantidad en 1 y muestra «Disponible» mientras haya stock.</span>
+                  </span>
+                </label>
 
                 <Field label="Descripción (opcional)">
                   <textarea

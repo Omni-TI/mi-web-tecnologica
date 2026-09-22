@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Minus, Plus, Loader2, Image as ImageIcon, ExternalLink, Search, PlusCircle } from 'lucide-react'
+import { Minus, Plus, Loader2, Image as ImageIcon, ExternalLink, Search, PlusCircle, Eye, EyeOff, Ban } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { api } from '../../lib/api.js'
@@ -150,6 +150,26 @@ export default function Dashboard() {
     timers.current[item.id] = setTimeout(() => flushStock(item.id), SAVE_DEBOUNCE_MS)
   }
 
+  /**
+   * Alterna una bandera booleana del artículo (no_mostrar / no_disponible) y la
+   * persiste vía PATCH. Optimista con reversión si la hoja rechaza el cambio.
+   */
+  async function toggleFlag(item, field) {
+    if (!canWrite) return
+    const next = !item[field]
+    setItems((prev) => prev.map((x) => (x.id === item.id ? { ...x, [field]: next } : x)))
+    markSaving(item.id, true)
+    try {
+      const updated = await api.updateItem(item.id, { [field]: next })
+      setItems((prev) => prev.map((x) => (x.id === item.id ? { ...x, ...updated } : x)))
+    } catch (err) {
+      setItems((prev) => prev.map((x) => (x.id === item.id ? { ...x, [field]: !next } : x)))
+      toast.error(err.message || 'No se pudo actualizar la hoja.')
+    } finally {
+      markSaving(item.id, false)
+    }
+  }
+
   async function handleCreate(payload) {
     setCreating(true)
     try {
@@ -230,6 +250,7 @@ export default function Dashboard() {
                 <th className="px-4 py-3 text-right">Total</th>
                 <th className="px-4 py-3 text-right">Disp.</th>
                 <th className="px-4 py-3 text-center">Arr.</th>
+                <th className="px-4 py-3 text-center">Estado</th>
                 <th className="px-4 py-3 text-center">Imágenes</th>
               </tr>
             </thead>
@@ -302,6 +323,32 @@ export default function Dashboard() {
                         </button>
                       </div>
                     </td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center justify-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => toggleFlag(it, 'no_mostrar')}
+                          disabled={!canWrite}
+                          aria-pressed={Boolean(it.no_mostrar)}
+                          aria-label={`${it.no_mostrar ? 'Mostrar' : 'Ocultar'} ${it.nombre} en el catálogo`}
+                          className={`btn-ghost h-7 w-7 shrink-0 justify-center p-0 disabled:cursor-not-allowed disabled:opacity-30 ${it.no_mostrar ? 'text-red-400 ring-1 ring-red-500/40' : 'text-ink-400'}`}
+                          title={it.no_mostrar ? 'Oculto en el catálogo — clic para mostrar' : 'Visible — clic para ocultar (No mostrar)'}
+                        >
+                          {it.no_mostrar ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => toggleFlag(it, 'no_disponible')}
+                          disabled={!canWrite}
+                          aria-pressed={Boolean(it.no_disponible)}
+                          aria-label={`Marcar ${it.nombre} como ${it.no_disponible ? 'disponible' : 'no disponible'}`}
+                          className={`btn-ghost h-7 w-7 shrink-0 justify-center p-0 disabled:cursor-not-allowed disabled:opacity-30 ${it.no_disponible ? 'text-amber-400 ring-1 ring-amber-500/40' : 'text-ink-400'}`}
+                          title={it.no_disponible ? 'Marcado «No disponible» — clic para habilitar' : 'Disponible — clic para marcar No disponible'}
+                        >
+                          <Ban className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </td>
                     <td className="px-4 py-3 text-center">
                       <button
                         type="button"
@@ -318,7 +365,7 @@ export default function Dashboard() {
               })}
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={11} className="px-4 py-8 text-center text-ink-400">
+                  <td colSpan={12} className="px-4 py-8 text-center text-ink-400">
                     No hay artículos que coincidan con «{query}».
                   </td>
                 </tr>
