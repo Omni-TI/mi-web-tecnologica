@@ -124,14 +124,14 @@ export default function Gallery() {
                 </span>
               )}
 
-              <label className="relative w-full sm:max-w-md">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400" aria-hidden />
+              <label className="relative w-full sm:flex-1">
+                <Search className="pointer-events-none absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-brand-400" aria-hidden />
                 <input
                   type="search"
                   value={q}
                   onChange={(e) => setQ(e.target.value)}
-                  placeholder="Buscar por nombre (exacto o similar)…"
-                  className="input pl-9"
+                  placeholder="Busca utilería: lámpara vintage, alfombra persa…"
+                  className="w-full rounded-xl border border-ink-600 bg-ink-800/70 py-3 pl-11 pr-4 text-base text-ink-50 shadow-sm placeholder:text-ink-400 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/40"
                   aria-label="Buscar en el catálogo"
                   disabled={loading}
                 />
