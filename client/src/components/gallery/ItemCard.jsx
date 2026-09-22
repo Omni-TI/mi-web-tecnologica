@@ -4,8 +4,11 @@ import { formatCLP } from '../../lib/format.js'
 /**
  * Tarjeta de artículo para la galería pública.
  * Muestra imagen (placeholder si no hay), nombre, categoría, valor y disponibilidad.
+ *
+ * `compact` reduce un poco paddings y tipografía para caber más por fila
+ * cuando la grilla usa más columnas (catálogo a ancho completo).
  */
-export default function ItemCard({ item, onOpen }) {
+export default function ItemCard({ item, onOpen, compact = false }) {
   const disponible = item.disponibles > 0
   const clickable = typeof onOpen === 'function'
   const clickProps = clickable
@@ -33,7 +36,7 @@ export default function ItemCard({ item, onOpen }) {
             className="h-full w-full object-cover"
           />
         ) : (
-          <Zap className="h-12 w-12" aria-hidden />
+          <Zap className={compact ? 'h-9 w-9' : 'h-12 w-12'} aria-hidden />
         )}
         <span
           className={`absolute right-2 top-2 inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-semibold ${
@@ -47,9 +50,9 @@ export default function ItemCard({ item, onOpen }) {
         </span>
       </div>
 
-      <div className="space-y-2 p-4">
+      <div className={`${compact ? 'space-y-1.5 p-3' : 'space-y-2 p-4'}`}>
         <div className="flex items-start justify-between gap-2">
-          <h3 className="font-display text-base font-semibold leading-tight text-ink-50">
+          <h3 className={`font-display font-semibold leading-tight text-ink-50 ${compact ? 'text-sm' : 'text-base'}`}>
             {item.nombre}
           </h3>
         </div>
@@ -64,7 +67,7 @@ export default function ItemCard({ item, onOpen }) {
           </div>
         )}
         <div className="flex items-baseline justify-between pt-2">
-          <span className="text-lg font-bold text-ink-50">{formatCLP(item.valor_arriendo)}</span>
+          <span className={`font-bold text-ink-50 ${compact ? 'text-base' : 'text-lg'}`}>{formatCLP(item.valor_arriendo)}</span>
           <span className="text-xs text-ink-400">/ arriendo</span>
         </div>
       </div>
