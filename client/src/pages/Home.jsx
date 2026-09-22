@@ -3,6 +3,7 @@ import ItemCard from '../components/gallery/ItemCard.jsx'
 import LoadingGrid from '../components/ui/LoadingGrid.jsx'
 import HeroBanner from '../components/home/HeroBanner.jsx'
 import CategoryTiles from '../components/home/CategoryTiles.jsx'
+import SocialProof from '../components/home/SocialProof.jsx'
 import { useItems } from '../hooks/useItems.js'
 
 export default function Home() {
@@ -44,6 +45,9 @@ export default function Home() {
           )}
         </div>
       </section>
+
+      {/* Social proof — confían en nosotros */}
+      <SocialProof />
     </>
   )
 }
