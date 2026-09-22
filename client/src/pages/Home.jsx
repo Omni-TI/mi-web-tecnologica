@@ -1,7 +1,8 @@
 import { Link } from 'react-router-dom'
-import { ArrowRight } from 'lucide-react'
 import ItemCard from '../components/gallery/ItemCard.jsx'
 import LoadingGrid from '../components/ui/LoadingGrid.jsx'
+import HeroBanner from '../components/home/HeroBanner.jsx'
+import CategoryTiles from '../components/home/CategoryTiles.jsx'
 import { useItems } from '../hooks/useItems.js'
 
 export default function Home() {
@@ -10,32 +11,11 @@ export default function Home() {
 
   return (
     <>
-      {/* HERO — vaciado intencionalmente. */}
-      <section className="border-b border-ink-800">
-        {/* TODO: nuevo contenido del hero, pendiente de definir */}
-      </section>
+      {/* Hero banner visual */}
+      <HeroBanner />
 
-      {/* Accesos rápidos */}
-      <section className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
-        <h2 className="font-display text-2xl font-bold">Explora Siete Rayos</h2>
-        <p className="mt-1 text-sm text-ink-400">Accesos directos a las secciones del sitio.</p>
-        <div className="mt-6 grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5">
-          {[
-            { to: '/catalogo',      label: 'Catálogo' },
-            { to: '/redes',         label: 'Redes sociales' },
-            { to: '/contacto',      label: 'Contacto' },
-          ].map((l) => (
-            <Link
-              key={l.to}
-              to={l.to}
-              className="card flex items-center justify-between px-4 py-4 text-sm hover:border-brand-500/60 hover:text-brand-400"
-            >
-              {l.label}
-              <ArrowRight className="h-4 w-4 opacity-60" aria-hidden />
-            </Link>
-          ))}
-        </div>
-      </section>
+      {/* Navegación por categorías visuales */}
+      <CategoryTiles items={items} />
 
       {/* Destacados del catálogo */}
       <section className="mx-auto max-w-7xl px-4 pb-16 sm:px-6 lg:px-8">
