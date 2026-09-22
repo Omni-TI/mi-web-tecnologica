@@ -172,19 +172,62 @@ async function fetchFromPublicCsv() {
 
 /* ───────────────────────── Modo sheets-api ───────────────────────── */
 
+/** ¿Hay credenciales de service account declaradas (archivo o base64)? */
+function isServiceAccountConfigured() {
+  return Boolean(config.sheets.serviceAccountJsonB64 || config.sheets.serviceAccountFile)
+}
+
+/**
+ * Carga y valida las credenciales de la service account.
+ * - Devuelve `null` si no hay ninguna declarada (modo público / local).
+ * - LANZA un error claro (status 500) si están declaradas pero el archivo no
+ *   existe, el base64/JSON es inválido, o falta `client_email`.
+ */
 function loadCredentials() {
-  if (config.sheets.serviceAccountJsonB64) {
-    return JSON.parse(Buffer.from(config.sheets.serviceAccountJsonB64, 'base64').toString('utf8'))
+  let raw
+  try {
+    if (config.sheets.serviceAccountJsonB64) {
+      raw = Buffer.from(config.sheets.serviceAccountJsonB64, 'base64').toString('utf8')
+    } else if (config.sheets.serviceAccountFile) {
+      raw = readFileSync(config.sheets.serviceAccountFile, 'utf8')
+    } else {
+      return null
+    }
+  } catch (err) {
+    const src = config.sheets.serviceAccountFile || 'GOOGLE_SERVICE_ACCOUNT_JSON_B64'
+    const e = new Error(
+      `No se pudo leer la credencial de la service account (${src}): ${err.message}. ` +
+      'Verifica la ruta en server/.env y que el archivo exista.',
+    )
+    e.status = 500
+    throw e
   }
-  if (config.sheets.serviceAccountFile) {
-    return JSON.parse(readFileSync(config.sheets.serviceAccountFile, 'utf8'))
+
+  let creds
+  try {
+    creds = JSON.parse(raw)
+  } catch {
+    const e = new Error(
+      'La credencial de la service account no es un JSON válido. ' +
+      'Vuelve a descargarla desde Google Cloud (Credenciales → Claves → JSON).',
+    )
+    e.status = 500
+    throw e
   }
-  return null
+  if (!creds.client_email || !creds.private_key) {
+    const e = new Error(
+      'El JSON de la service account no tiene "client_email"/"private_key". ' +
+      '¿Es el archivo correcto descargado desde Google Cloud?',
+    )
+    e.status = 500
+    throw e
+  }
+  return creds
 }
 
 function getClient() {
   if (sheetsApi) return sheetsApi
-  const creds = loadCredentials()
+  const creds = loadCredentials() // puede lanzar (credenciales inválidas)
   if (!creds) return null
   const auth = new google.auth.GoogleAuth({
     credentials: creds,
@@ -192,6 +235,65 @@ function getClient() {
   })
   sheetsApi = google.sheets({ version: 'v4', auth })
   return sheetsApi
+}
+
+/**
+ * Traduce errores de la API de Google en escritura a mensajes accionables.
+ * 403 = la hoja no está compartida con la service account como Editor.
+ */
+function mapSheetsWriteError(err) {
+  const status = err?.code || err?.response?.status
+  let email = null
+  try { email = loadCredentials()?.client_email || null } catch { /* noop */ }
+
+  if (status === 403) {
+    const e = new Error(
+      `Google rechazó la escritura (403). Comparte la hoja con la service account` +
+      `${email ? ` (${email})` : ''} dándole permiso de Editor.`,
+    )
+    e.status = 400
+    return e
+  }
+  if (status === 404) {
+    const e = new Error('No se encontró la hoja (404). Revisa GOOGLE_SHEETS_ID en server/.env.')
+    e.status = 400
+    return e
+  }
+  if (status === 401) {
+    const e = new Error('Credenciales rechazadas (401). Regenera la clave JSON de la service account.')
+    e.status = 400
+    return e
+  }
+  return err
+}
+
+/**
+ * Diagnóstico de configuración de Sheets (para GET /api/health). No lanza:
+ * reporta el estado incluso si las credenciales son inválidas.
+ */
+export function getSheetsDiagnostics() {
+  const configured = isServiceAccountConfigured()
+  let credentialsLoaded = false
+  let serviceAccountEmail = null
+  let error = null
+  if (configured) {
+    try {
+      const creds = loadCredentials()
+      credentialsLoaded = Boolean(creds)
+      serviceAccountEmail = creds?.client_email || null
+    } catch (err) {
+      error = err.message
+    }
+  }
+  return {
+    mode: config.sheetsMode,
+    canWrite: config.sheetsCanWrite,
+    serviceAccountConfigured: configured,
+    credentialsLoaded,
+    serviceAccountEmail,
+    spreadsheetId: config.sheets.id || null,
+    error,
+  }
 }
 
 /**
@@ -296,24 +398,28 @@ async function writeAllToSheetsApi(items) {
 
   const lastCol = colLetter(headerRow.length)
 
-  // 3. Si la hoja estaba vacía, escribe también los encabezados en la fila 1.
-  if ((headRes.data.values || []).length === 0) {
-    await client.spreadsheets.values.update({
-      spreadsheetId: config.sheets.id,
-      range: `${tab}!A1:${lastCol}1`,
-      valueInputOption: 'RAW',
-      requestBody: { values: [headerRow] },
-    })
-  }
+  try {
+    // 3. Si la hoja estaba vacía, escribe también los encabezados en la fila 1.
+    if ((headRes.data.values || []).length === 0) {
+      await client.spreadsheets.values.update({
+        spreadsheetId: config.sheets.id,
+        range: `${tab}!A1:${lastCol}1`,
+        valueInputOption: 'RAW',
+        requestBody: { values: [headerRow] },
+      })
+    }
 
-  // 4. Escribe los datos desde la fila 2 (NO toca la fila de encabezados del cliente).
-  if (dataRows.length > 0) {
-    await client.spreadsheets.values.update({
-      spreadsheetId: config.sheets.id,
-      range: `${tab}!A2:${lastCol}${dataRows.length + 1}`,
-      valueInputOption: 'RAW',
-      requestBody: { values: dataRows },
-    })
+    // 4. Escribe los datos desde la fila 2 (NO toca la fila de encabezados del cliente).
+    if (dataRows.length > 0) {
+      await client.spreadsheets.values.update({
+        spreadsheetId: config.sheets.id,
+        range: `${tab}!A2:${lastCol}${dataRows.length + 1}`,
+        valueInputOption: 'RAW',
+        requestBody: { values: dataRows },
+      })
+    }
+  } catch (err) {
+    throw mapSheetsWriteError(err)
   }
 
   // 5. Limpia filas sobrantes debajo de los datos.
@@ -612,8 +718,12 @@ async function writeItemCells(id, fieldValues) {
   }
   if (data.length === 0) throw new Error('Ninguna columna coincide en la hoja')
 
-  await client.spreadsheets.values.batchUpdate({
-    spreadsheetId: config.sheets.id,
-    requestBody: { valueInputOption: 'RAW', data },
-  })
+  try {
+    await client.spreadsheets.values.batchUpdate({
+      spreadsheetId: config.sheets.id,
+      requestBody: { valueInputOption: 'RAW', data },
+    })
+  } catch (err) {
+    throw mapSheetsWriteError(err)
+  }
 }

@@ -26,6 +26,8 @@ lerna-debug.log*
 **/credentials.json
 **/service-account*.json
 **/*-secret.json
+# Carpeta de credenciales del servidor (JSON de service account)
+server/secrets/
 
 # Editor
 .vscode/*
