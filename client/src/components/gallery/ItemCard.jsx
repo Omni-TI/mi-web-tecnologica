@@ -1,8 +1,8 @@
-import { Zap, PackageCheck, PackageX, AlertTriangle } from 'lucide-react'
+import { Zap, PackageCheck, PackageX, AlertTriangle, Info } from 'lucide-react'
 import { formatCLP } from '../../lib/format.js'
 import { stockStatus } from '../../lib/stock.js'
 
-const STOCK_ICON = { x: PackageX, alert: AlertTriangle, check: PackageCheck }
+const STOCK_ICON = { x: PackageX, alert: AlertTriangle, check: PackageCheck, info: Info }
 
 /**
  * Tarjeta de artículo para la galería pública.
@@ -12,7 +12,11 @@ const STOCK_ICON = { x: PackageX, alert: AlertTriangle, check: PackageCheck }
  * cuando la grilla usa más columnas (catálogo a ancho completo).
  */
 export default function ItemCard({ item, onOpen, compact = false }) {
-  const stock = stockStatus(item.disponibles)
+  const stock = stockStatus(item.disponibles, {
+    cantidadTotal: item.cantidad_total,
+    articuloUnico: item.articulo_unico,
+    noDisponible: item.no_disponible,
+  })
   const StockIcon = STOCK_ICON[stock.icon]
   const clickable = typeof onOpen === 'function'
   const clickProps = clickable
