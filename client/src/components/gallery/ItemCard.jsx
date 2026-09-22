@@ -1,5 +1,8 @@
-import { Zap, PackageCheck, PackageX } from 'lucide-react'
+import { Zap, PackageCheck, PackageX, AlertTriangle } from 'lucide-react'
 import { formatCLP } from '../../lib/format.js'
+import { stockStatus } from '../../lib/stock.js'
+
+const STOCK_ICON = { x: PackageX, alert: AlertTriangle, check: PackageCheck }
 
 /**
  * Tarjeta de artículo para la galería pública.
@@ -9,7 +12,8 @@ import { formatCLP } from '../../lib/format.js'
  * cuando la grilla usa más columnas (catálogo a ancho completo).
  */
 export default function ItemCard({ item, onOpen, compact = false }) {
-  const disponible = item.disponibles > 0
+  const stock = stockStatus(item.disponibles)
+  const StockIcon = STOCK_ICON[stock.icon]
   const clickable = typeof onOpen === 'function'
   const clickProps = clickable
     ? {
@@ -39,14 +43,10 @@ export default function ItemCard({ item, onOpen, compact = false }) {
           <Zap className={compact ? 'h-9 w-9' : 'h-12 w-12'} aria-hidden />
         )}
         <span
-          className={`absolute right-2 top-2 inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-semibold ${
-            disponible
-              ? 'bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-500/40'
-              : 'bg-red-500/15 text-red-300 ring-1 ring-red-500/40'
-          }`}
+          className={`absolute right-2 top-2 inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-semibold ${stock.tone}`}
         >
-          {disponible ? <PackageCheck className="h-3.5 w-3.5" /> : <PackageX className="h-3.5 w-3.5" />}
-          {disponible ? `${item.disponibles} disp.` : 'En arriendo'}
+          <StockIcon className="h-3.5 w-3.5" aria-hidden />
+          {stock.label}
         </span>
       </div>
 
