@@ -28,6 +28,7 @@ import itemsRouter from './routes/items.js'
 import authRouter from './routes/auth.js'
 import auditRouter from './routes/audit.js'
 import { usersBackend } from './services/users.js'
+import { getSheetsDiagnostics } from './services/sheets.js'
 
 const app = express()
 
@@ -51,6 +52,9 @@ app.get('/api/health', (_req, res) => {
     status: 'ok',
     env: config.env,
     sheetsEnabled: config.sheetsEnabled,
+    // Diagnóstico de escritura: modo, si puede escribir, si la credencial de la
+    // service account carga bien y el email a compartir en la hoja.
+    sheets: getSheetsDiagnostics(),
     usersBackend: usersBackend(),
     ts: new Date().toISOString(),
   })

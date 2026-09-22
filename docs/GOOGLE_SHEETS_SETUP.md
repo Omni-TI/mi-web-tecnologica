@@ -63,9 +63,40 @@ Deja `GOOGLE_SERVICE_ACCOUNT_JSON_B64` vacío.
 npm run dev
 ```
 
-Comprueba en el navegador: `http://localhost:4000/api/health`
-Debe mostrar `"sheetsEnabled": true`. En `/admin` reaparecen los botones de
-crear/editar/eliminar, y los cambios se escriben en tu hoja.
+**a) Diagnóstico rápido** — abre `http://localhost:4000/api/health`. Ahora
+incluye un bloque `sheets` con el estado de la escritura:
+
+```json
+{
+  "sheetsEnabled": true,
+  "sheets": {
+    "mode": "sheets-api",
+    "canWrite": true,
+    "serviceAccountConfigured": true,
+    "credentialsLoaded": true,
+    "serviceAccountEmail": "sieterayos-bot@...iam.gserviceaccount.com",
+    "error": null
+  }
+}
+```
+
+- `mode: "sheets-api"` y `canWrite: true` → la escritura está habilitada.
+- `serviceAccountEmail` → el email que debe estar compartido como **Editor** en tu hoja.
+- Si `error` no es `null`, dice exactamente qué falta (credencial ausente/ inválida).
+
+**b) Prueba real** — en `/admin`, los botones **+ / −** de la columna «Arr.»
+quedan habilitados. Pulsa **+** en un artículo: cambia en pantalla y se guarda.
+Abre tu Google Sheet y verás las celdas `disponible`/`arriendo` actualizadas.
+La acción queda registrada en **Auditoría**.
+
+### Si algo falla
+
+| Mensaje | Causa | Solución |
+|---|---|---|
+| `credentialsLoaded: false`, `error` con "no se pudo leer…" | Ruta o archivo mal | Revisa `GOOGLE_SERVICE_ACCOUNT_FILE=./secrets/service-account.json` y que el JSON exista en `server/secrets/`. |
+| `error` con "no es un JSON válido" | Archivo corrupto | Vuelve a descargar la clave JSON desde Google Cloud. |
+| Al pulsar +/- : "Google rechazó la escritura (403)… comparte la hoja…" | La hoja no está compartida con el robot | Comparte la hoja con el `serviceAccountEmail` como **Editor**. |
+| "No se encontró la hoja (404)" | ID incorrecto | Revisa `GOOGLE_SHEETS_ID`. |
 
 ---
 

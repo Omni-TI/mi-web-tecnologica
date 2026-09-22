@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Search, X, ArrowUpDown } from 'lucide-react'
+import { Search, X, ArrowUpDown, SlidersHorizontal } from 'lucide-react'
 
 import { useItems } from '../hooks/useItems.js'
 import { useCatalogSearch } from '../hooks/useCatalogSearch.js'
@@ -57,6 +57,7 @@ export default function Gallery() {
   const filtered = useCatalogSearch(items, q, { category, subcategoria, sort })
 
   const [selected, setSelected] = useState(null) // artículo abierto en el modal de detalle
+  const [menuOpen, setMenuOpen] = useState(true)  // menú lateral de categorías visible/oculto
 
   const hasAnyFilter = q || (category && category !== 'Todas') || subcategoria || sort !== 'relevancia'
   function clearAll() {
@@ -78,30 +79,59 @@ export default function Gallery() {
       {error ? (
         <ErrorPanel error={error} onRetry={() => window.location.reload()} />
       ) : (
-        <div className="grid gap-6 lg:grid-cols-[320px_1fr]">
-          <aside className="space-y-4">
-            {loading ? (
-              <div className="card h-32 animate-pulse" aria-hidden />
-            ) : (
-              <CategoryMenu
-                items={items}
-                category={category}
-                subcategoria={subcategoria}
-                onChange={({ category: c, subcategoria: s }) => { setCategory(c); setSubcategoria(s) }}
-              />
-            )}
-          </aside>
+        <div className={`grid gap-6 ${menuOpen ? 'lg:grid-cols-[300px_1fr]' : 'grid-cols-1'}`}>
+          {menuOpen && (
+            <aside id="catalog-category-menu" className="space-y-4">
+              {loading ? (
+                <div className="card h-32 animate-pulse" aria-hidden />
+              ) : (
+                <CategoryMenu
+                  items={items}
+                  category={category}
+                  subcategoria={subcategoria}
+                  onChange={({ category: c, subcategoria: s }) => { setCategory(c); setSubcategoria(s) }}
+                />
+              )}
+            </aside>
+          )}
 
-          <section>
+          <section className="min-w-0">
             <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center">
-              <label className="relative w-full sm:max-w-md">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400" aria-hidden />
+              {/* Toggle del menú lateral de categorías */}
+              <button
+                type="button"
+                onClick={() => setMenuOpen((o) => !o)}
+                aria-expanded={menuOpen}
+                aria-controls="catalog-category-menu"
+                className={`btn-ghost shrink-0 ${menuOpen ? 'text-brand-300 ring-1 ring-brand-500/40' : ''}`}
+              >
+                <SlidersHorizontal className="h-4 w-4" />
+                Categorías
+              </button>
+
+              {/* Filtro activo (visible aunque el menú esté oculto) */}
+              {!menuOpen && category && category !== 'Todas' && (
+                <span className="hidden items-center gap-1 rounded-full bg-brand-600/15 px-2.5 py-1 text-xs text-brand-200 ring-1 ring-brand-500/30 sm:inline-flex">
+                  {subcategoria ? `${category} › ${subcategoria}` : category}
+                  <button
+                    type="button"
+                    onClick={() => { setCategory('Todas'); setSubcategoria('') }}
+                    aria-label="Quitar filtro de categoría"
+                    className="ml-0.5 rounded-full p-0.5 hover:bg-brand-500/30"
+                  >
+                    <X className="h-3 w-3" aria-hidden />
+                  </button>
+                </span>
+              )}
+
+              <label className="relative w-full sm:flex-1">
+                <Search className="pointer-events-none absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-brand-400" aria-hidden />
                 <input
                   type="search"
                   value={q}
                   onChange={(e) => setQ(e.target.value)}
-                  placeholder="Buscar por nombre (exacto o similar)…"
-                  className="input pl-9"
+                  placeholder="Busca utilería: lámpara vintage, alfombra persa…"
+                  className="w-full rounded-xl border border-ink-600 bg-ink-800/70 py-3 pl-11 pr-4 text-base text-ink-50 shadow-sm placeholder:text-ink-400 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/40"
                   aria-label="Buscar en el catálogo"
                   disabled={loading}
                 />
@@ -139,9 +169,15 @@ export default function Gallery() {
                 {q && <span> Prueba con un término más corto o revisa la ortografía.</span>}
               </div>
             ) : (
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              <div
+                className={`grid gap-4 ${
+                  menuOpen
+                    ? 'grid-cols-1 sm:grid-cols-2 xl:grid-cols-3'
+                    : 'grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5'
+                }`}
+              >
                 {filtered.map((it) => (
-                  <ItemCard key={it.id} item={it} onOpen={() => setSelected(it)} />
+                  <ItemCard key={it.id} item={it} compact={!menuOpen} onOpen={() => setSelected(it)} />
                 ))}
               </div>
             )}
