@@ -18,7 +18,7 @@ import { config } from '../config/env.js'
 import { MOCK_ITEMS } from '../data/mockItems.js'
 import { ItemSchema } from '../schemas/item.js'
 
-const HEADERS = ['id', 'nombre', 'categoria', 'subcategoria1', 'subcategoria2', 'valor_arriendo', 'cantidad_total', 'disponibles', 'en_arriendo', 'imagen_url', 'descripcion', 'garantia', 'no_mostrar', 'no_disponible', 'articulo_unico', 'fecha_creacion', 'activo']
+const HEADERS = ['id', 'nombre', 'categoria', 'subcategoria1', 'subcategoria2', 'valor_arriendo', 'cantidad_total', 'disponibles', 'en_arriendo', 'imagen_url', 'imagenes', 'descripcion', 'garantia', 'no_mostrar', 'no_disponible', 'articulo_unico', 'fecha_creacion', 'activo']
 const LOCAL_STORE = join(process.cwd(), 'server', 'data', 'items.local.json')
 const LOCAL_STORE_FALLBACK = join(process.cwd(), 'data', 'items.local.json')
 
@@ -62,6 +62,16 @@ function parseActivo(v) {
 function parseFlag(v) {
   if (v == null || v === '') return false
   return /^(true|verdadero|1|si|s[ií]|x|yes)$/i.test(String(v).trim())
+}
+
+/** Parsea la columna "Imagenes" ("url1 | url2 | url3") a un arreglo (máx. 3). */
+function parseImagenes(v) {
+  if (!v) return []
+  return String(v)
+    .split('|')
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .slice(0, 3)
 }
 
 /**
@@ -133,6 +143,7 @@ function mapRecord(rec) {
     disponibles,
     en_arriendo: enArriendo,
     imagen_url: get('imagenurl', 'imagen', 'foto'),
+    imagenes: parseImagenes(get('imagenes')),
     descripcion: get('descripcion'),
     garantia: get('garantia'),
     no_mostrar: parseFlag(rec['nomostrar']),
@@ -352,6 +363,7 @@ const FIELD_TO_HEADERS = {
   disponibles: ['disponible', 'disponibles'],
   en_arriendo: ['arriendo', 'enarriendo'],
   imagen_url: ['imagenurl', 'imagen', 'foto'],
+  imagenes: ['imagenes'],
   descripcion: ['descripcion'],
   garantia: ['garantia'],
   no_mostrar: ['nomostrar'],
@@ -388,6 +400,8 @@ function valueForField(it, field) {
     case 'no_disponible':
     case 'articulo_unico':
       return it[field] === true ? 'TRUE' : 'FALSE'
+    case 'imagenes':
+      return Array.isArray(it.imagenes) ? it.imagenes.slice(0, 3).join(' | ') : ''
     default:
       return it[field] ?? ''
   }

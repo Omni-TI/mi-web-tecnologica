@@ -4,7 +4,7 @@ import useEmblaCarousel from 'embla-carousel-react'
 import { X, ChevronLeft, ChevronRight, PackageCheck, PackageX, AlertTriangle, Info, ShieldCheck } from 'lucide-react'
 
 import { formatCLP } from '../../lib/format.js'
-import { getItemImages } from '../../lib/itemImages.js'
+import { getItemImages, imageProps } from '../../lib/itemImages.js'
 import { stockStatus } from '../../lib/stock.js'
 import { useSettings } from '../../context/SettingsContext.jsx'
 
@@ -74,7 +74,13 @@ export default function ItemDetailModal({ item, open, onClose }) {
                     {images.map((src, i) => (
                       <div className="min-w-0 flex-[0_0_100%]" key={i}>
                         <div className="aspect-[4/3] w-full bg-ink-950">
-                          <img src={src} alt={`${item.nombre} — imagen ${i + 1}`} className="h-full w-full object-cover" draggable={false} />
+                          <img
+                            {...imageProps(src, { widths: [600, 1000, 1400], sizes: '(min-width: 640px) 512px, 100vw' })}
+                            alt={`${item.nombre} — imagen ${i + 1}`}
+                            loading="lazy"
+                            className="h-full w-full object-cover"
+                            draggable={false}
+                          />
                         </div>
                       </div>
                     ))}

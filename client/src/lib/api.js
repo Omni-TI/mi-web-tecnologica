@@ -70,6 +70,9 @@ export const api = {
   getSettings: (signal) => request('/api/settings', { signal }),
   updateSettings: (patch) => request('/api/settings', { method: 'PATCH', body: patch }),
 
+  // Firma de subida de imágenes (admin). El archivo se sube directo a ImageKit.
+  getUploadAuth: (signal) => request('/api/uploads/auth', { signal }),
+
   login: (username, password) => request('/api/auth/login', { method: 'POST', body: { username, password } }),
   logout: () => request('/api/auth/logout', { method: 'POST' }),
   me: (signal) => request('/api/auth/me', { signal }),

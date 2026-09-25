@@ -440,7 +440,12 @@ export default function Dashboard() {
         </div>
       )}
 
-      <ImageManagerModal open={Boolean(imagesFor)} item={imagesFor} onClose={() => setImagesFor(null)} />
+      <ImageManagerModal
+        open={Boolean(imagesFor)}
+        item={imagesFor}
+        onClose={() => setImagesFor(null)}
+        onSaved={(updated) => setItems((prev) => prev.map((x) => (x.id === updated.id ? { ...x, ...updated } : x)))}
+      />
       <AddItemModal open={adding} items={items} saving={creating} onCancel={() => setAdding(false)} onSubmit={handleCreate} />
     </>
   )

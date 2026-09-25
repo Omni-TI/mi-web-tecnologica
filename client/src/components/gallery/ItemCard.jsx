@@ -1,6 +1,7 @@
 import { Zap, PackageCheck, PackageX, AlertTriangle, Info } from 'lucide-react'
 import { formatCLP } from '../../lib/format.js'
 import { stockStatus } from '../../lib/stock.js'
+import { imageProps } from '../../lib/itemImages.js'
 import { useSettings } from '../../context/SettingsContext.jsx'
 
 const STOCK_ICON = { x: PackageX, alert: AlertTriangle, check: PackageCheck, info: Info }
@@ -22,6 +23,8 @@ export default function ItemCard({ item, onOpen, compact = false }) {
   })
   const StockIcon = STOCK_ICON[stock.icon]
   const unavailable = stockIndicatorEnabled && stock.level === 'unavailable'
+  // Imagen principal: primera de `imagenes`, si no `imagen_url`. Sin foto → ícono.
+  const primaryImage = (Array.isArray(item.imagenes) && item.imagenes[0]) || item.imagen_url || ''
   const clickable = typeof onOpen === 'function'
   const clickProps = clickable
     ? {
@@ -40,9 +43,12 @@ export default function ItemCard({ item, onOpen, compact = false }) {
       aria-label={clickable ? `Ver detalle de ${item.nombre}` : `${item.nombre} — categoría ${item.categoria}`}
     >
       <div className="relative flex aspect-[4/3] items-center justify-center bg-gradient-to-br from-ink-800 to-ink-950 text-ink-600">
-        {item.imagen_url ? (
+        {primaryImage ? (
           <img
-            src={item.imagen_url}
+            {...imageProps(primaryImage, {
+              widths: [300, 600, 900],
+              sizes: '(min-width: 1280px) 20vw, (min-width: 640px) 33vw, 100vw',
+            })}
             alt={item.nombre}
             loading="lazy"
             className={`h-full w-full object-cover ${unavailable ? 'opacity-50 grayscale' : ''}`}
