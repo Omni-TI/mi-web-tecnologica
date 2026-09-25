@@ -149,7 +149,7 @@ export default function ItemDetailModal({ item, open, onClose }) {
 
                 <div className="flex items-baseline gap-2 pt-1">
                   <span className="text-2xl font-bold text-ink-50">{formatCLP(item.valor_arriendo)}</span>
-                  <span className="text-sm text-ink-400">/ arriendo</span>
+                  <span className="text-sm text-ink-400">+ IVA</span>
                 </div>
 
                 {item.descripcion && (

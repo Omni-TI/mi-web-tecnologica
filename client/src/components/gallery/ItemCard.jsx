@@ -71,9 +71,9 @@ export default function ItemCard({ item, onOpen, compact = false }) {
             ))}
           </div>
         )}
-        <div className="flex items-baseline justify-between pt-2">
+        <div className="flex items-baseline gap-1.5 pt-2">
           <span className={`font-bold text-ink-50 ${compact ? 'text-base' : 'text-lg'}`}>{formatCLP(item.valor_arriendo)}</span>
-          <span className="text-xs text-ink-400">/ arriendo</span>
+          <span className="text-xs text-ink-400">+ IVA</span>
         </div>
       </div>
     </article>
