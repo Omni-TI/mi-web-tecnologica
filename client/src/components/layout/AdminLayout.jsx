@@ -1,5 +1,5 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
-import { LogOut, LayoutGrid, Zap, ClipboardList } from 'lucide-react'
+import { LogOut, LayoutGrid, Zap, ClipboardList, BarChart3 } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { useAuth } from '../../hooks/useAuth.jsx'
@@ -11,7 +11,7 @@ export default function AdminLayout() {
   async function handleLogout() {
     await logout()
     toast.success('Sesión cerrada.')
-    navigate('/admin/login', { replace: true })
+    navigate('/', { replace: true })
   }
 
   return (
@@ -34,6 +34,16 @@ export default function AdminLayout() {
             <LayoutGrid className="h-4 w-4" /> Inventario
           </NavLink>
           <NavLink
+            to="/admin/dashboard"
+            className={({ isActive }) =>
+              `flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium ${
+                isActive ? 'bg-ink-800 text-brand-400' : 'text-ink-200 hover:bg-ink-800'
+              }`
+            }
+          >
+            <BarChart3 className="h-4 w-4" /> Dashboard
+          </NavLink>
+          <NavLink
             to="/admin/auditoria"
             className={({ isActive }) =>
               `flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium ${
@@ -44,27 +54,29 @@ export default function AdminLayout() {
             <ClipboardList className="h-4 w-4" /> Auditoría
           </NavLink>
         </nav>
-        <div className="space-y-2 border-t border-ink-800 p-3">
-          {user && (
+        {user && (
+          <div className="border-t border-ink-800 p-3">
             <div className="rounded-md bg-ink-800/60 px-3 py-2 text-xs">
               <div className="text-ink-400">Sesión</div>
               <div className="truncate font-medium text-ink-100">{user.username}</div>
             </div>
-          )}
-          <button onClick={handleLogout} className="btn-ghost w-full justify-start">
-            <LogOut className="h-4 w-4" /> Cerrar sesión
-          </button>
-        </div>
+          </div>
+        )}
       </aside>
 
       <div className="flex-1">
-        <header className="flex items-center justify-between border-b border-ink-800 bg-ink-900 px-4 py-3 md:px-6">
+        <header className="flex items-center justify-between gap-3 border-b border-ink-800 bg-ink-900 px-4 py-3 md:px-6">
           <h1 className="font-display text-lg font-semibold">Panel de administración</h1>
-          {user && (
-            <span className="hidden text-xs text-ink-400 sm:inline">
-              Conectado como <span className="text-brand-400">{user.username}</span>
-            </span>
-          )}
+          <div className="flex items-center gap-3">
+            {user && (
+              <span className="hidden text-xs text-ink-400 sm:inline">
+                Conectado como <span className="text-brand-400">{user.username}</span>
+              </span>
+            )}
+            <button onClick={handleLogout} className="btn-ghost text-sm">
+              <LogOut className="h-4 w-4" /> Cerrar sesión
+            </button>
+          </div>
         </header>
         <main className="p-4 md:p-6">
           <Outlet />

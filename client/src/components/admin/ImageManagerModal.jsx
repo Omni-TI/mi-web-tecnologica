@@ -3,38 +3,45 @@ import { Dialog, Transition } from '@headlessui/react'
 import { X, Upload, ArrowLeft, ArrowRight, Trash2, ImagePlus } from 'lucide-react'
 import { toast } from 'sonner'
 
+import { api } from '../../lib/api.js'
 import { subirImagenes, MIN_IMAGENES, MAX_IMAGENES } from '../../lib/imageUpload.js'
 
 /**
  * Gestión de imágenes de un artículo (panel admin).
  *
- * - Seleccionar/"subir" hasta 3 imágenes (mín. 1, máx. 3) desde el computador.
- * - Miniaturas con vista previa local (URL.createObjectURL), quitar y reordenar.
- * - Valida mínimo (no permite guardar con 0) y máximo (bloquea al llegar a 3).
+ * - Precarga las imágenes actuales del artículo (`item.imagenes`) y permite
+ *   agregar/quitar/reordenar hasta 3 (mín. 1, máx. 3).
+ * - Las imágenes nuevas se suben a ImageKit (subida firmada, ver
+ *   lib/imageUpload.js); las existentes se conservan por su URL.
+ * - Al guardar, persiste el arreglo final en el artículo (`PATCH item.imagenes`)
+ *   y avisa al panel vía `onSaved`.
  *
- * ⚠️ Sin almacenamiento real todavía: al guardar se llama a `subirImagenes`
- * (stub en lib/imageUpload.js) que hoy devuelve previews locales. Ahí está el
- * único punto a cambiar cuando se conecte el servicio real.
+ * Entradas: { key, url, file? , remote? }. `remote:true` = imagen ya guardada
+ * (URL de ImageKit); sin `file` no se vuelve a subir.
  */
-export default function ImageManagerModal({ open, item, onClose }) {
-  const [imgs, setImgs] = useState([]) // { key, file, url }
+export default function ImageManagerModal({ open, item, onClose, onSaved }) {
+  const [imgs, setImgs] = useState([]) // { key, file, url, remote }
   const [saving, setSaving] = useState(false)
   const inputRef = useRef(null)
   const imgsRef = useRef([])
   useEffect(() => { imgsRef.current = imgs }, [imgs])
 
-  // Al abrir arranca vacío; al cerrar libera los object URLs vigentes.
+  // Al abrir precarga las imágenes existentes del artículo; al cerrar libera
+  // los object URLs de las imágenes NUEVAS (las remotas no crean object URL).
   useEffect(() => {
     if (open) {
+      const preload = (item?.imagenes || []).slice(0, MAX_IMAGENES).map((url, i) => ({
+        key: `remote-${i}-${String(url).slice(-14)}`, url, remote: true,
+      }))
       // eslint-disable-next-line react-hooks/set-state-in-effect
-      setImgs([])
+      setImgs(preload)
     } else {
-      imgsRef.current.forEach((i) => URL.revokeObjectURL(i.url))
+      imgsRef.current.forEach((i) => { if (!i.remote) URL.revokeObjectURL(i.url) })
     }
-  }, [open])
+  }, [open, item])
 
-  // Libera cualquier object URL pendiente al desmontar.
-  useEffect(() => () => { imgsRef.current.forEach((i) => URL.revokeObjectURL(i.url)) }, [])
+  // Libera cualquier object URL nuevo pendiente al desmontar.
+  useEffect(() => () => { imgsRef.current.forEach((i) => { if (!i.remote) URL.revokeObjectURL(i.url) }) }, [])
 
   const atMax = imgs.length >= MAX_IMAGENES
 
@@ -59,7 +66,7 @@ export default function ImageManagerModal({ open, item, onClose }) {
   function remove(key) {
     setImgs((prev) => {
       const target = prev.find((i) => i.key === key)
-      if (target) URL.revokeObjectURL(target.url)
+      if (target && !target.remote) URL.revokeObjectURL(target.url)
       return prev.filter((i) => i.key !== key)
     })
   }
@@ -82,15 +89,19 @@ export default function ImageManagerModal({ open, item, onClose }) {
     }
     setSaving(true)
     try {
-      // Modular: la subida real vive en lib/imageUpload.js (hoy es un stub).
-      const urls = await subirImagenes(imgs.map((i) => i.file))
-      // TODO: cuando exista almacenamiento real, persistir estas URLs en el
-      // artículo (p. ej. PATCH item.imagenes = urls). Por ahora solo registramos.
-      console.info('[imágenes] Se guardarían para', item?.id, '→', urls)
-      toast.success(`${urls.length} imagen(es) listas para «${item?.nombre}». (Guardado real pendiente de conectar.)`)
+      // Sube solo las imágenes NUEVAS (las remotas conservan su URL) y arma el
+      // arreglo final respetando el orden mostrado.
+      const nuevos = imgs.filter((i) => !i.remote)
+      const subidas = nuevos.length ? await subirImagenes(nuevos.map((i) => i.file)) : []
+      let k = 0
+      const finalUrls = imgs.map((i) => (i.remote ? i.url : subidas[k++]))
+
+      const updated = await api.updateItem(item.id, { imagenes: finalUrls })
+      toast.success(`Imágenes guardadas para «${item?.nombre}».`)
+      if (onSaved) onSaved(updated)
       onClose()
     } catch (err) {
-      toast.error(err.message || 'No se pudieron procesar las imágenes.')
+      toast.error(err.message || 'No se pudieron guardar las imágenes.')
     } finally {
       setSaving(false)
     }

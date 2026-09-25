@@ -4,6 +4,7 @@ import { Routes, Route, Navigate } from 'react-router-dom'
 import PublicLayout from './components/layout/PublicLayout.jsx'
 import AdminLayout from './components/layout/AdminLayout.jsx'
 import AuthGuard from './components/admin/AuthGuard.jsx'
+import { SettingsProvider } from './context/SettingsContext.jsx'
 
 import Home from './pages/Home.jsx'
 import NotFound from './pages/NotFound.jsx'
@@ -16,6 +17,7 @@ const Contact       = lazy(() => import('./pages/Contact.jsx'))
 const Privacy       = lazy(() => import('./pages/Privacy.jsx'))
 const AdminLogin    = lazy(() => import('./pages/admin/Login.jsx'))
 const AdminDashboard = lazy(() => import('./pages/admin/Dashboard.jsx'))
+const AdminStats    = lazy(() => import('./pages/admin/Stats.jsx'))
 const AdminAudit    = lazy(() => import('./pages/admin/Audit.jsx'))
 
 const Loader = () => (
@@ -26,6 +28,7 @@ const Loader = () => (
 
 export default function App() {
   return (
+    <SettingsProvider>
     <Suspense fallback={<Loader />}>
       <Routes>
         <Route element={<PublicLayout />}>
@@ -41,6 +44,7 @@ export default function App() {
           <Route element={<AuthGuard />}>
             <Route element={<AdminLayout />}>
               <Route index element={<AdminDashboard />} />
+              <Route path="dashboard" element={<AdminStats />} />
               <Route path="auditoria" element={<AdminAudit />} />
             </Route>
           </Route>
@@ -50,5 +54,6 @@ export default function App() {
         <Route path="*" element={<Navigate to="/404" replace />} />
       </Routes>
     </Suspense>
+    </SettingsProvider>
   )
 }

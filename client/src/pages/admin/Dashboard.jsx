@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Minus, Plus, Loader2, Image as ImageIcon, ExternalLink, Search, PlusCircle } from 'lucide-react'
+import { Minus, Plus, Loader2, Image as ImageIcon, ExternalLink, Search, PlusCircle, Eye, EyeOff, Ban } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { api } from '../../lib/api.js'
@@ -38,6 +38,8 @@ export default function Dashboard() {
   const [query, setQuery] = useState('')           // búsqueda de la tabla
   const [adding, setAdding] = useState(false)       // modal "Agregar artículo"
   const [creating, setCreating] = useState(false)   // guardando el nuevo artículo
+  const [stockIndicator, setStockIndicator] = useState(null) // null = cargando
+  const [stockSaving, setStockSaving] = useState(false)      // guardando la preferencia
 
   // Refs para el control de escritura (no disparan re-render).
   const itemsRef = useRef(items)
@@ -75,13 +77,35 @@ export default function Dashboard() {
     return () => { Object.values(t).forEach(clearTimeout) }
   }, [])
 
-  // Totales sobre TODO el inventario (no la vista filtrada).
-  const totals = useMemo(() => items.reduce((acc, it) => {
-    acc.total += it.cantidad_total
-    acc.disp += it.disponibles
-    acc.arr += it.en_arriendo
-    return acc
-  }, { total: 0, disp: 0, arr: 0 }), [items])
+  // Carga la preferencia global del indicador de stock.
+  useEffect(() => {
+    const ctrl = new AbortController()
+    api.getSettings(ctrl.signal)
+      .then((res) => setStockIndicator(Boolean(res?.stockIndicatorEnabled)))
+      .catch((err) => { if (err.name !== 'AbortError') setStockIndicator(false) })
+    return () => ctrl.abort()
+  }, [])
+
+  /**
+   * Alterna el indicador de stock del catálogo (preferencia GLOBAL, persistente).
+   * Optimista con reversión si el guardado falla.
+   */
+  async function toggleStockIndicator() {
+    if (stockIndicator === null || stockSaving) return
+    const next = !stockIndicator
+    setStockIndicator(next)
+    setStockSaving(true)
+    try {
+      const res = await api.updateSettings({ stockIndicatorEnabled: next })
+      setStockIndicator(Boolean(res.stockIndicatorEnabled))
+      toast.success(next ? 'Indicador de stock activado.' : 'Indicador de stock desactivado.')
+    } catch (err) {
+      setStockIndicator(!next)
+      toast.error(err.message || 'No se pudo guardar la preferencia.')
+    } finally {
+      setStockSaving(false)
+    }
+  }
 
   // Búsqueda instantánea: nombre, ID, categoría y sub-categoría.
   const filtered = useMemo(() => {
@@ -158,6 +182,26 @@ export default function Dashboard() {
     timers.current[item.id] = setTimeout(() => flushStock(item.id), SAVE_DEBOUNCE_MS)
   }
 
+  /**
+   * Alterna una bandera booleana del artículo (no_mostrar / no_disponible) y la
+   * persiste vía PATCH. Optimista con reversión si la hoja rechaza el cambio.
+   */
+  async function toggleFlag(item, field) {
+    if (!canWrite) return
+    const next = !item[field]
+    setItems((prev) => prev.map((x) => (x.id === item.id ? { ...x, [field]: next } : x)))
+    markSaving(item.id, true)
+    try {
+      const updated = await api.updateItem(item.id, { [field]: next })
+      setItems((prev) => prev.map((x) => (x.id === item.id ? { ...x, ...updated } : x)))
+    } catch (err) {
+      setItems((prev) => prev.map((x) => (x.id === item.id ? { ...x, [field]: !next } : x)))
+      toast.error(err.message || 'No se pudo actualizar la hoja.')
+    } finally {
+      markSaving(item.id, false)
+    }
+  }
+
   async function handleCreate(payload) {
     setCreating(true)
     try {
@@ -176,13 +220,40 @@ export default function Dashboard() {
 
   return (
     <>
-      <div className="grid gap-3 sm:grid-cols-3">
-        <StatCard label="Total unidades" value={loading ? '…' : totals.total} />
-        <StatCard label="Disponibles"    value={loading ? '…' : totals.disp} tone="ok" />
-        <StatCard label="En arriendo"    value={loading ? '…' : totals.arr} tone="warn" />
+      {/* Interruptor global del indicador de stock del catálogo */}
+      <div className="mb-4 rounded-2xl border border-ink-800 bg-ink-900/40 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="min-w-0">
+            <h3 className="font-display text-sm font-semibold text-ink-100">Indicador de stock en el catálogo</h3>
+            <p className="mt-0.5 text-xs text-ink-400">
+              Controla si los visitantes ven los anuncios de disponibilidad («Disponible», «Quedan pocos»,
+              «Sin stock»…). Se aplica a todo el catálogo.
+            </p>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="text-xs">
+              {stockIndicator === null
+                ? <span className="text-ink-500">cargando…</span>
+                : stockIndicator
+                  ? <span className="text-emerald-300">Habilitado</span>
+                  : <span className="text-ink-400">Deshabilitado</span>}
+            </span>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={Boolean(stockIndicator)}
+              aria-label="Mostrar u ocultar el indicador de stock del catálogo"
+              onClick={toggleStockIndicator}
+              disabled={stockIndicator === null || stockSaving}
+              className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${stockIndicator ? 'bg-brand-500' : 'bg-ink-700'}`}
+            >
+              <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${stockIndicator ? 'translate-x-6' : 'translate-x-1'}`} />
+            </button>
+          </div>
+        </div>
       </div>
 
-      <div className="mt-6 flex flex-wrap items-center justify-between gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <h2 className="font-display text-lg font-semibold">Inventario</h2>
           {source && (
@@ -238,10 +309,13 @@ export default function Dashboard() {
                 <th className="px-4 py-3">Nombre</th>
                 <th className="px-4 py-3">Categoría</th>
                 <th className="px-4 py-3">Sub-categoría</th>
+                <th className="px-4 py-3">Descripción</th>
+                <th className="px-4 py-3">Garantía</th>
                 <th className="px-4 py-3 text-right">Valor</th>
                 <th className="px-4 py-3 text-right">Total</th>
                 <th className="px-4 py-3 text-right">Disp.</th>
                 <th className="px-4 py-3 text-center">Arr.</th>
+                <th className="px-4 py-3 text-center">Estado</th>
                 <th className="px-4 py-3 text-center">Imágenes</th>
               </tr>
             </thead>
@@ -261,6 +335,24 @@ export default function Dashboard() {
                     <td className="px-4 py-3">
                       {sub ? (
                         <span className="rounded-full bg-sky-500/10 px-2 py-0.5 text-xs text-sky-300 ring-1 ring-sky-500/30">{sub}</span>
+                      ) : (
+                        <span className="text-ink-500">—</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      {it.descripcion ? (
+                        <span className="block max-w-[16rem] truncate text-xs text-ink-300" title={it.descripcion}>
+                          {it.descripcion}
+                        </span>
+                      ) : (
+                        <span className="text-ink-500">—</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      {it.garantia ? (
+                        <span className="block max-w-[14rem] truncate text-xs text-ink-300" title={it.garantia}>
+                          {it.garantia}
+                        </span>
                       ) : (
                         <span className="text-ink-500">—</span>
                       )}
@@ -296,6 +388,32 @@ export default function Dashboard() {
                         </button>
                       </div>
                     </td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center justify-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => toggleFlag(it, 'no_mostrar')}
+                          disabled={!canWrite}
+                          aria-pressed={Boolean(it.no_mostrar)}
+                          aria-label={`${it.no_mostrar ? 'Mostrar' : 'Ocultar'} ${it.nombre} en el catálogo`}
+                          className={`btn-ghost h-7 w-7 shrink-0 justify-center p-0 disabled:cursor-not-allowed disabled:opacity-30 ${it.no_mostrar ? 'text-red-400 ring-1 ring-red-500/40' : 'text-ink-400'}`}
+                          title={it.no_mostrar ? 'Oculto en el catálogo — clic para mostrar' : 'Visible — clic para ocultar (No mostrar)'}
+                        >
+                          {it.no_mostrar ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => toggleFlag(it, 'no_disponible')}
+                          disabled={!canWrite}
+                          aria-pressed={Boolean(it.no_disponible)}
+                          aria-label={`Marcar ${it.nombre} como ${it.no_disponible ? 'disponible' : 'no disponible'}`}
+                          className={`btn-ghost h-7 w-7 shrink-0 justify-center p-0 disabled:cursor-not-allowed disabled:opacity-30 ${it.no_disponible ? 'text-amber-400 ring-1 ring-amber-500/40' : 'text-ink-400'}`}
+                          title={it.no_disponible ? 'Marcado «No disponible» — clic para habilitar' : 'Disponible — clic para marcar No disponible'}
+                        >
+                          <Ban className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </td>
                     <td className="px-4 py-3 text-center">
                       <button
                         type="button"
@@ -312,7 +430,7 @@ export default function Dashboard() {
               })}
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={9} className="px-4 py-8 text-center text-ink-400">
+                  <td colSpan={12} className="px-4 py-8 text-center text-ink-400">
                     No hay artículos que coincidan con «{query}».
                   </td>
                 </tr>
@@ -322,18 +440,13 @@ export default function Dashboard() {
         </div>
       )}
 
-      <ImageManagerModal open={Boolean(imagesFor)} item={imagesFor} onClose={() => setImagesFor(null)} />
+      <ImageManagerModal
+        open={Boolean(imagesFor)}
+        item={imagesFor}
+        onClose={() => setImagesFor(null)}
+        onSaved={(updated) => setItems((prev) => prev.map((x) => (x.id === updated.id ? { ...x, ...updated } : x)))}
+      />
       <AddItemModal open={adding} items={items} saving={creating} onCancel={() => setAdding(false)} onSubmit={handleCreate} />
     </>
-  )
-}
-
-function StatCard({ label, value, tone }) {
-  const color = tone === 'ok' ? 'text-emerald-300' : tone === 'warn' ? 'text-yellow-300' : 'text-ink-50'
-  return (
-    <div className="card p-4">
-      <div className="text-xs uppercase tracking-wider text-ink-400">{label}</div>
-      <div className={`mt-1 font-display text-2xl font-bold ${color}`}>{value}</div>
-    </div>
   )
 }

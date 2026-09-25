@@ -65,15 +65,30 @@ Esquemas en `server/src/schemas/item.js` (zod, compartido conceptualmente con
 el client). Columnas de la hoja / campos del item:
 
 `id, nombre, categoria, subcategoria1, subcategoria2, valor_arriendo,
-cantidad_total, disponibles, en_arriendo, imagen_url, imagenes[], fecha_creacion, activo`
+cantidad_total, disponibles, en_arriendo, imagen_url, imagenes[], descripcion,
+garantia, no_mostrar, no_disponible, articulo_unico, fecha_creacion, activo`
+
+- `descripcion` / `garantia`: columnas `Descripcion` / `Garantia` de la hoja
+  (texto libre). Se muestran en el detalle del artículo y en el panel admin.
+- Banderas (columnas `No mostrar` / `No disponible` / `Articulo unico`, valores
+  `TRUE`/vacío; el parseo tolera `SI`/`1`/`X`):
+  - `no_mostrar`: oculta el artículo de TODAS las vistas públicas. La regla está
+    centralizada en `hooks/useItems.js` (que usan Home y catálogo); el admin usa
+    `api.getItems` directo y por eso sigue viéndolo para gestionarlo.
+  - `no_disponible`: se muestra pero se ordena al final del catálogo y aparece
+    como «Consultar» (ver `lib/stock.js` + `hooks/useCatalogSearch.js`).
+  - `articulo_unico`: pieza única; afecta el texto de disponibilidad.
 
 - Regla de negocio **solo en escritura admin**: `disponibles + en_arriendo <= cantidad_total`
   (desigualdad; unidades pueden estar en reparación/reserva). En **lectura** el
   mapeo es tolerante (no descarta filas que no cuadren).
 - Categorías/subcategorías **no** son una tabla aparte: se derivan de las
   columnas `categoria` y `subcategoria1` de los propios items.
-- `imagenes[]` (hasta 3) está preparado para almacenamiento real (p. ej.
-  ImageKit); hoy suele venir vacío y el frontend usa placeholders SVG.
+- `imagenes[]` (hasta 3) se aloja en **ImageKit** (columna `Imagenes` de la
+  hoja, URLs separadas por `|`). Subida firmada desde el admin
+  (`GET /api/uploads/auth` + `lib/imageUpload.js`); entrega responsive vía
+  `lib/itemImages.js` (`imageProps` añade `?tr=w-…,f-auto,q-auto`). Si no hay
+  imágenes, el frontend usa placeholders SVG. Setup en `docs/IMAGES.md`.
 
 ## API (server)
 
@@ -82,13 +97,23 @@ Base `/api`. Auth por **JWT + cookies HttpOnly** con **CSRF double-submit**
 
 Público:
 - `GET  /api/items` · `GET /api/items/categories` · `GET /api/health`
+- `GET  /api/settings` — configuración global del sitio. Hoy:
+  `{ stockIndicatorEnabled }` (si el catálogo muestra los indicadores de stock;
+  por defecto `false`). Lo lee `context/SettingsContext.jsx` y lo consumen
+  `ItemCard`/`ItemDetailModal`. Almacenado server-side en
+  `server/data/settings.local.json` (patrón interno, como usuarios/auditoría).
 
 Auth admin (`requireAuth`):
 - `POST /api/auth/login | logout | refresh` · `GET /api/auth/me`
 - `POST /api/items` (crear) · `PATCH /api/items/:id` (editar) · `DELETE /api/items/:id`
 - `PATCH /api/items/:id/disponibles` — ajuste puntual de disponibles.
 - `PATCH /api/items/:id/stock` — **traspaso** disponibles ↔ en_arriendo
-  (escribe ambas celdas; total constante).
+  (escribe ambas celdas; total constante). La auditoría registra el movimiento
+  enriquecido (tipo arriendo/devolución, unidades, estado resultante).
+- `PATCH /api/settings` — alterna la config global (p. ej. el indicador de
+  stock del catálogo) desde el Panel admin.
+- `GET  /api/uploads/auth` — firma de subida a ImageKit (la clave privada no sale
+  del server; el navegador sube directo). Ver `docs/IMAGES.md`.
 - `GET  /api/audit` — bitácora de acciones admin.
 
 Escritura a Sheets: celdas puntuales vía `spreadsheets.values.update/batchUpdate`
@@ -100,7 +125,7 @@ localizando la fila por la columna `id` (`writeItemCells` en
 ```
 client/src/
   pages/            Home, Gallery (catálogo), Contact, Social, Privacy, NotFound
-  pages/admin/      Login, Dashboard (inventario), Audit
+  pages/admin/      Login, Dashboard (inventario), Stats (gráficos), Audit
   components/
     gallery/        CategoryMenu, ItemCard, ItemDetailModal (carrusel Embla)
     admin/          AddItemModal, ImageManagerModal, ItemFormModal
@@ -146,5 +171,6 @@ Puntos clave del catálogo (`pages/Gallery.jsx`):
 ## Docs adicionales
 
 - `docs/GOOGLE_SHEETS_SETUP.md` — conectar la hoja (los 3 modos).
+- `docs/IMAGES.md` — alojamiento de imágenes en ImageKit (subida firmada).
 - `docs/SECURITY.md` — auth, CSRF, rate limiting, cabeceras (helmet).
 - `docs/DEPLOYMENT.md` — despliegue (client estático + server).

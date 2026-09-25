@@ -18,7 +18,7 @@ import { config } from '../config/env.js'
 import { MOCK_ITEMS } from '../data/mockItems.js'
 import { ItemSchema } from '../schemas/item.js'
 
-const HEADERS = ['id', 'nombre', 'categoria', 'subcategoria1', 'subcategoria2', 'valor_arriendo', 'cantidad_total', 'disponibles', 'en_arriendo', 'imagen_url', 'fecha_creacion', 'activo']
+const HEADERS = ['id', 'nombre', 'categoria', 'subcategoria1', 'subcategoria2', 'valor_arriendo', 'cantidad_total', 'disponibles', 'en_arriendo', 'imagen_url', 'imagenes', 'descripcion', 'garantia', 'no_mostrar', 'no_disponible', 'articulo_unico', 'fecha_creacion', 'activo']
 const LOCAL_STORE = join(process.cwd(), 'server', 'data', 'items.local.json')
 const LOCAL_STORE_FALLBACK = join(process.cwd(), 'data', 'items.local.json')
 
@@ -56,6 +56,22 @@ function parseIntSafe(v) {
 function parseActivo(v) {
   if (v == null || v === '') return true
   return /^(true|1|si|s[ií]|yes|activo|disponible)$/i.test(String(v).trim())
+}
+
+/** ¿Bandera verdadera? (por defecto false si la celda está vacía). Acepta TRUE/VERDADERO/SI/1/X. */
+function parseFlag(v) {
+  if (v == null || v === '') return false
+  return /^(true|verdadero|1|si|s[ií]|x|yes)$/i.test(String(v).trim())
+}
+
+/** Parsea la columna "Imagenes" ("url1 | url2 | url3") a un arreglo (máx. 3). */
+function parseImagenes(v) {
+  if (!v) return []
+  return String(v)
+    .split('|')
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .slice(0, 3)
 }
 
 /**
@@ -127,6 +143,12 @@ function mapRecord(rec) {
     disponibles,
     en_arriendo: enArriendo,
     imagen_url: get('imagenurl', 'imagen', 'foto'),
+    imagenes: parseImagenes(get('imagenes')),
+    descripcion: get('descripcion'),
+    garantia: get('garantia'),
+    no_mostrar: parseFlag(rec['nomostrar']),
+    no_disponible: parseFlag(rec['nodisponible']),
+    articulo_unico: parseFlag(rec['articulounico']),
     fecha_creacion: get('fechacreacion', 'fecha'),
     activo: parseActivo(rec['activo'] ?? rec['visible']),
   }
@@ -341,6 +363,12 @@ const FIELD_TO_HEADERS = {
   disponibles: ['disponible', 'disponibles'],
   en_arriendo: ['arriendo', 'enarriendo'],
   imagen_url: ['imagenurl', 'imagen', 'foto'],
+  imagenes: ['imagenes'],
+  descripcion: ['descripcion'],
+  garantia: ['garantia'],
+  no_mostrar: ['nomostrar'],
+  no_disponible: ['nodisponible'],
+  articulo_unico: ['articulounico'],
   fecha_creacion: ['fechacreacion', 'fecha'],
   activo: ['activo', 'visible'],
 }
@@ -368,6 +396,12 @@ function valueForField(it, field) {
       return Number(it[field] ?? 0)
     case 'activo':
       return it.activo === false ? 'FALSE' : 'TRUE'
+    case 'no_mostrar':
+    case 'no_disponible':
+    case 'articulo_unico':
+      return it[field] === true ? 'TRUE' : 'FALSE'
+    case 'imagenes':
+      return Array.isArray(it.imagenes) ? it.imagenes.slice(0, 3).join(' | ') : ''
     default:
       return it[field] ?? ''
   }
@@ -454,9 +488,45 @@ function writeLocalItems(items) {
 
 /* ───────────────────────── Dispatch por modo ───────────────────────── */
 
+/** Traduce un fallo de lectura de Sheets en un mensaje accionable. */
+function describeSheetsReadError(err) {
+  const status = err?.code || err?.response?.status
+  const url = String(err?.response?.config?.url || err?.config?.url || err?.response?.request?.responseURL || '')
+  if (url.includes('oauth2') || url.includes('token')) {
+    return 'Google rechazó la credencial de la service account (token ' + (status || '400') + '). ' +
+      'Regenera la clave JSON en Google Cloud (la cuenta de servicio → Claves → Agregar clave → JSON), ' +
+      'reemplaza server/secrets/service-account.json y verifica que la hora del sistema esté correcta. ' +
+      'Revisa el diagnóstico en /api/health.'
+  }
+  if (status === 403) {
+    return 'Google denegó el acceso a la hoja (403). Habilita "Google Sheets API" en tu proyecto ' +
+      'y comparte la hoja con la service account como Lector/Editor.'
+  }
+  if (status === 404) {
+    return 'No se encontró la hoja (404). Revisa GOOGLE_SHEETS_ID en server/.env.'
+  }
+  return `No se pudo leer Google Sheets: ${err?.message || 'error desconocido'}.`
+}
+
 async function readAllRaw() {
   switch (config.sheetsMode) {
-    case 'sheets-api': return fetchFromSheetsApi()
+    case 'sheets-api': {
+      try {
+        return await fetchFromSheetsApi()
+      } catch (err) {
+        const msg = describeSheetsReadError(err)
+        console.error('[sheets] lectura vía API falló:', msg)
+        // Respaldo de SOLO LECTURA: si la hoja está compartida como pública,
+        // sirve el catálogo por CSV mientras se arregla la credencial de escritura.
+        try {
+          const items = await fetchFromPublicCsv()
+          console.warn('[sheets] usando CSV público como respaldo de lectura del catálogo.')
+          return items
+        } catch {
+          const e = new Error(msg); e.status = 502; throw e
+        }
+      }
+    }
     case 'public-csv': return fetchFromPublicCsv()
     default:           return readLocalItems()
   }
@@ -671,7 +741,18 @@ export async function setStock(id, disponibles, enArriendo) {
   }
 
   invalidateItemsCache()
-  return { ...item, disponibles: d, en_arriendo: a }
+
+  // Metadatos del movimiento para la auditoría (la ruta extrae _mov y no lo
+  // envía al frontend). deltaArr > 0 => se arrendaron unidades; < 0 => se devolvieron.
+  const deltaArr = a - item.en_arriendo
+  const _mov = {
+    tipo: deltaArr > 0 ? 'arriendo' : deltaArr < 0 ? 'devolucion' : 'ajuste',
+    unidades: Math.abs(deltaArr),
+    en_arriendo: a,
+    disponibles: d,
+    cantidad_total: item.cantidad_total,
+  }
+  return { ...item, disponibles: d, en_arriendo: a, _mov }
 }
 
 /**

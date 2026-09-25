@@ -51,6 +51,27 @@ function placeholderCount(item) {
 }
 
 /**
+ * Props <img> optimizadas para una URL real (ImageKit): entrega responsive
+ * (`srcset`) con formato/calidad automáticos (WebP/AVIF). Para placeholders
+ * (data-URI SVG) o URLs no-http devuelve `{ src }` tal cual, sin transformar.
+ *
+ * @param {string} url
+ * @param {{ widths?: number[], sizes?: string }} [opts]
+ * @returns {{ src: string, srcSet?: string, sizes?: string }}
+ */
+export function imageProps(url, { widths = [400, 800, 1200], sizes } = {}) {
+  if (!url || !/^https?:\/\//i.test(url)) return { src: url }
+  const tr = (w) => `${url}${url.includes('?') ? '&' : '?'}tr=w-${w},f-auto,q-auto`
+  const props = {
+    // `src` de respaldo: un tamaño intermedio para navegadores sin srcset.
+    src: tr(widths[Math.min(1, widths.length - 1)]),
+    srcSet: widths.map((w) => `${tr(w)} ${w}w`).join(', '),
+  }
+  if (sizes) props.sizes = sizes
+  return props
+}
+
+/**
  * Devuelve el arreglo de URLs de imágenes del artículo (máx. 3).
  *
  * @param {object} item

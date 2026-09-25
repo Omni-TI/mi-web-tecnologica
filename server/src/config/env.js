@@ -65,5 +65,23 @@ export const config = {
     loginMax: int(process.env.LOGIN_RATE_MAX, 5),
   },
 
+  /**
+   * Alojamiento de imágenes (ImageKit). La clave PRIVADA vive solo aquí (server);
+   * la pública y el endpoint se entregan al panel por /api/uploads/auth. Ver
+   * docs/IMAGES.md.
+   */
+  images: {
+    imagekitPublicKey: process.env.IMAGEKIT_PUBLIC_KEY || '',
+    imagekitPrivateKey: process.env.IMAGEKIT_PRIVATE_KEY || '',
+    imagekitUrlEndpoint: process.env.IMAGEKIT_URL_ENDPOINT || '',
+    imagekitFolder: process.env.IMAGEKIT_FOLDER || '/siete-rayos',
+    maxUploadMb: int(process.env.IMAGE_MAX_UPLOAD_MB, 5),
+  },
+
+  /** ¿Está configurado el alojamiento de imágenes (subida real habilitada)? */
+  get imagesEnabled() {
+    return Boolean(this.images.imagekitPublicKey && this.images.imagekitPrivateKey)
+  },
+
   logSheetsFallback: bool(process.env.LOG_SHEETS_FALLBACK, true),
 }

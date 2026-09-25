@@ -77,6 +77,14 @@ export function useCatalogSearch(items, query, { category = 'Todas', subcategori
 
     // 3) Ordenamiento (copia para no mutar; 'relevancia' respeta el orden actual).
     const sorter = SORTERS[sort]
-    return sorter ? [...out].sort(sorter) : out
+    const ordered = sorter ? [...out].sort(sorter) : out
+
+    // 4) Los marcados "No disponible" van al final, conservando su orden relativo.
+    if (ordered.some((it) => it.no_disponible)) {
+      const disp = ordered.filter((it) => !it.no_disponible)
+      const noDisp = ordered.filter((it) => it.no_disponible)
+      return [...disp, ...noDisp]
+    }
+    return ordered
   }, [items, query, category, subcategoria, sort, fuse])
 }

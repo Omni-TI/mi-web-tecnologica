@@ -27,6 +27,8 @@ import { csrfIssue, csrfProtect } from './middleware/csrf.js'
 import itemsRouter from './routes/items.js'
 import authRouter from './routes/auth.js'
 import auditRouter from './routes/audit.js'
+import settingsRouter from './routes/settings.js'
+import uploadsRouter from './routes/uploads.js'
 import { usersBackend } from './services/users.js'
 import { getSheetsDiagnostics } from './services/sheets.js'
 
@@ -56,6 +58,11 @@ app.get('/api/health', (_req, res) => {
     // service account carga bien y el email a compartir en la hoja.
     sheets: getSheetsDiagnostics(),
     usersBackend: usersBackend(),
+    // Alojamiento de imágenes: si está configurado y el endpoint público.
+    images: {
+      enabled: config.imagesEnabled,
+      urlEndpoint: config.images.imagekitUrlEndpoint || null,
+    },
     ts: new Date().toISOString(),
   })
 })
@@ -65,6 +72,12 @@ app.use('/api/auth', csrfProtect, authRouter)
 
 // Items: GET públicos sin csrf; mutaciones dentro pasan por requireAuth + csrfProtect.
 app.use('/api/items', csrfProtect, itemsRouter)
+
+// Configuración global: GET público (lo lee el catálogo), PATCH admin.
+app.use('/api/settings', csrfProtect, settingsRouter)
+
+// Subida de imágenes: firma de subida (solo admin) para ImageKit.
+app.use('/api/uploads', csrfProtect, uploadsRouter)
 
 // Auditoría (solo admin).
 app.use('/api/audit', csrfProtect, auditRouter)

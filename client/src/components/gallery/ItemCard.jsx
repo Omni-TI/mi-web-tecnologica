@@ -1,8 +1,10 @@
-import { Zap, PackageCheck, PackageX, AlertTriangle } from 'lucide-react'
+import { Zap, PackageCheck, PackageX, AlertTriangle, Info } from 'lucide-react'
 import { formatCLP } from '../../lib/format.js'
 import { stockStatus } from '../../lib/stock.js'
+import { imageProps } from '../../lib/itemImages.js'
+import { useSettings } from '../../context/SettingsContext.jsx'
 
-const STOCK_ICON = { x: PackageX, alert: AlertTriangle, check: PackageCheck }
+const STOCK_ICON = { x: PackageX, alert: AlertTriangle, check: PackageCheck, info: Info }
 
 /**
  * Tarjeta de artículo para la galería pública.
@@ -12,8 +14,17 @@ const STOCK_ICON = { x: PackageX, alert: AlertTriangle, check: PackageCheck }
  * cuando la grilla usa más columnas (catálogo a ancho completo).
  */
 export default function ItemCard({ item, onOpen, compact = false }) {
-  const stock = stockStatus(item.disponibles)
+  // El indicador de stock es una preferencia GLOBAL controlada desde el admin.
+  const { stockIndicatorEnabled } = useSettings()
+  const stock = stockStatus(item.disponibles, {
+    cantidadTotal: item.cantidad_total,
+    articuloUnico: item.articulo_unico,
+    noDisponible: item.no_disponible,
+  })
   const StockIcon = STOCK_ICON[stock.icon]
+  const unavailable = stockIndicatorEnabled && stock.level === 'unavailable'
+  // Imagen principal: primera de `imagenes`, si no `imagen_url`. Sin foto → ícono.
+  const primaryImage = (Array.isArray(item.imagenes) && item.imagenes[0]) || item.imagen_url || ''
   const clickable = typeof onOpen === 'function'
   const clickProps = clickable
     ? {
@@ -31,23 +42,28 @@ export default function ItemCard({ item, onOpen, compact = false }) {
       className={`card group animate-fade-up overflow-hidden transition-transform duration-200 hover:-translate-y-1 hover:border-brand-500/60 hover:shadow-glow ${clickable ? 'cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500' : ''}`}
       aria-label={clickable ? `Ver detalle de ${item.nombre}` : `${item.nombre} — categoría ${item.categoria}`}
     >
-      <div className="relative flex aspect-[4/3] items-center justify-center bg-gradient-to-br from-ink-800 to-ink-950 text-ink-600">
-        {item.imagen_url ? (
+      <div className="relative flex aspect-[4/3] items-center justify-center bg-ink-950 text-ink-600">
+        {primaryImage ? (
           <img
-            src={item.imagen_url}
+            {...imageProps(primaryImage, {
+              widths: [400, 800, 1200],
+              sizes: '(min-width: 1280px) 22vw, (min-width: 640px) 40vw, 100vw',
+            })}
             alt={item.nombre}
             loading="lazy"
-            className="h-full w-full object-cover"
+            className={`h-full w-full object-contain ${unavailable ? 'opacity-50 grayscale' : ''}`}
           />
         ) : (
-          <Zap className={compact ? 'h-9 w-9' : 'h-12 w-12'} aria-hidden />
+          <Zap className={`${compact ? 'h-9 w-9' : 'h-12 w-12'} ${unavailable ? 'opacity-50' : ''}`} aria-hidden />
         )}
-        <span
-          className={`absolute right-2 top-2 inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-semibold ${stock.tone}`}
-        >
-          <StockIcon className="h-3.5 w-3.5" aria-hidden />
-          {stock.label}
-        </span>
+        {stockIndicatorEnabled && (
+          <span
+            className={`absolute right-2 top-2 inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-semibold ${stock.tone}`}
+          >
+            <StockIcon className="h-3.5 w-3.5" aria-hidden />
+            {stock.label}
+          </span>
+        )}
       </div>
 
       <div className={`${compact ? 'space-y-1.5 p-3' : 'space-y-2 p-4'}`}>
@@ -66,9 +82,9 @@ export default function ItemCard({ item, onOpen, compact = false }) {
             ))}
           </div>
         )}
-        <div className="flex items-baseline justify-between pt-2">
+        <div className="flex items-baseline gap-1.5 pt-2">
           <span className={`font-bold text-ink-50 ${compact ? 'text-base' : 'text-lg'}`}>{formatCLP(item.valor_arriendo)}</span>
-          <span className="text-xs text-ink-400">/ arriendo</span>
+          <span className="text-xs text-ink-400">+ IVA</span>
         </div>
       </div>
     </article>

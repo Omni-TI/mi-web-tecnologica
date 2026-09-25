@@ -24,7 +24,10 @@ router.get('/', async (_req, res, next) => {
       count: items.length,
       items,
     })
-  } catch (err) { next(err) }
+  } catch (err) {
+    if (err.status) return res.status(err.status).json({ error: err.message })
+    next(err)
+  }
 })
 
 router.get('/categories', async (_req, res, next) => {
@@ -104,12 +107,24 @@ router.patch('/:id/disponibles', requireAuth, validateBody(DisponiblesSchema), a
  */
 router.patch('/:id/stock', requireAuth, validateBody(StockSchema), async (req, res, next) => {
   try {
-    const updated = await setStock(req.params.id, req.body.disponibles, req.body.en_arriendo)
+    const { _mov, ...updated } = await setStock(req.params.id, req.body.disponibles, req.body.en_arriendo)
+    // Auditoría enriquecida del movimiento: tipo (arriendo/devolución), cuántas
+    // unidades se movieron y el estado resultante del artículo.
+    const resumen = _mov && _mov.unidades > 0
+      ? `${_mov.tipo === 'arriendo' ? 'Arrendó' : _mov.tipo === 'devolucion' ? 'Devolvió' : 'Ajustó'} ${_mov.unidades} unidad(es) de «${updated.nombre}»`
+      : `Ajuste de stock de «${updated.nombre}»`
     await audit({
       user: req.user.username,
       action: 'item.stock',
       entityId: updated.id,
-      changes: { disponibles: updated.disponibles, en_arriendo: updated.en_arriendo },
+      changes: {
+        resumen,
+        tipo: _mov?.tipo,
+        unidades: _mov?.unidades,
+        disponibles: updated.disponibles,
+        en_arriendo: updated.en_arriendo,
+        cantidad_total: updated.cantidad_total,
+      },
       ip: req.ip,
     })
     res.json(updated)

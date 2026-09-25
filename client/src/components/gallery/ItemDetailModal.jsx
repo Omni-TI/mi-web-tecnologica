@@ -1,10 +1,14 @@
 import { Fragment, useCallback, useEffect, useState } from 'react'
 import { Dialog, Transition } from '@headlessui/react'
 import useEmblaCarousel from 'embla-carousel-react'
-import { X, ChevronLeft, ChevronRight, PackageCheck, PackageX } from 'lucide-react'
+import { X, ChevronLeft, ChevronRight, PackageCheck, PackageX, AlertTriangle, Info, ShieldCheck } from 'lucide-react'
 
 import { formatCLP } from '../../lib/format.js'
-import { getItemImages } from '../../lib/itemImages.js'
+import { getItemImages, imageProps } from '../../lib/itemImages.js'
+import { stockStatus } from '../../lib/stock.js'
+import { useSettings } from '../../context/SettingsContext.jsx'
+
+const STOCK_ICON = { x: PackageX, alert: AlertTriangle, check: PackageCheck, info: Info }
 
 /**
  * Modal de detalle del artículo.
@@ -17,6 +21,7 @@ import { getItemImages } from '../../lib/itemImages.js'
  */
 export default function ItemDetailModal({ item, open, onClose }) {
   const images = getItemImages(item)
+  const { stockIndicatorEnabled } = useSettings() // preferencia global del indicador
   const [emblaRef, emblaApi] = useEmblaCarousel({ loop: images.length > 1 })
   const [selected, setSelected] = useState(0)
 
@@ -39,7 +44,12 @@ export default function ItemDetailModal({ item, open, onClose }) {
 
   if (!item) return null
 
-  const disponible = item.disponibles > 0
+  const stock = stockStatus(item.disponibles, {
+    cantidadTotal: item.cantidad_total,
+    articuloUnico: item.articulo_unico,
+    noDisponible: item.no_disponible,
+  })
+  const StockIcon = STOCK_ICON[stock.icon]
   const sub = [item.subcategoria1, item.subcategoria2].filter(Boolean).join(' · ')
   const multiple = images.length > 1
 
@@ -56,7 +66,7 @@ export default function ItemDetailModal({ item, open, onClose }) {
           <Transition.Child as={Fragment}
             enter="ease-out duration-150" enterFrom="opacity-0 scale-95" enterTo="opacity-100 scale-100"
             leave="ease-in duration-100" leaveFrom="opacity-100 scale-100" leaveTo="opacity-0 scale-95">
-            <Dialog.Panel className="w-full max-w-lg overflow-hidden rounded-2xl border border-ink-800 bg-ink-900 shadow-2xl">
+            <Dialog.Panel className="w-full max-w-2xl overflow-hidden rounded-2xl border border-ink-800 bg-ink-900 shadow-2xl">
               {/* Carrusel */}
               <div className="relative">
                 <div className="overflow-hidden" ref={emblaRef}>
@@ -64,7 +74,13 @@ export default function ItemDetailModal({ item, open, onClose }) {
                     {images.map((src, i) => (
                       <div className="min-w-0 flex-[0_0_100%]" key={i}>
                         <div className="aspect-[4/3] w-full bg-ink-950">
-                          <img src={src} alt={`${item.nombre} — imagen ${i + 1}`} className="h-full w-full object-cover" draggable={false} />
+                          <img
+                            {...imageProps(src, { widths: [800, 1200, 1600], sizes: '(min-width: 768px) 672px, 100vw' })}
+                            alt={`${item.nombre} — imagen ${i + 1}`}
+                            loading="lazy"
+                            className="h-full w-full object-contain"
+                            draggable={false}
+                          />
                         </div>
                       </div>
                     ))}
@@ -120,16 +136,14 @@ export default function ItemDetailModal({ item, open, onClose }) {
                   <Dialog.Title className="font-display text-xl font-bold leading-tight text-ink-50">
                     {item.nombre}
                   </Dialog.Title>
-                  <span
-                    className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold ${
-                      disponible
-                        ? 'bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-500/40'
-                        : 'bg-red-500/15 text-red-300 ring-1 ring-red-500/40'
-                    }`}
-                  >
-                    {disponible ? <PackageCheck className="h-3.5 w-3.5" /> : <PackageX className="h-3.5 w-3.5" />}
-                    {disponible ? `Disponible (${item.disponibles})` : 'Sin stock'}
-                  </span>
+                  {stockIndicatorEnabled && (
+                    <span
+                      className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold ${stock.tone}`}
+                    >
+                      <StockIcon className="h-3.5 w-3.5" aria-hidden />
+                      {stock.label}
+                    </span>
+                  )}
                 </div>
 
                 <div className="flex flex-wrap gap-2">
@@ -145,8 +159,24 @@ export default function ItemDetailModal({ item, open, onClose }) {
 
                 <div className="flex items-baseline gap-2 pt-1">
                   <span className="text-2xl font-bold text-ink-50">{formatCLP(item.valor_arriendo)}</span>
-                  <span className="text-sm text-ink-400">/ arriendo</span>
+                  <span className="text-sm text-ink-400">+ IVA</span>
                 </div>
+
+                {item.descripcion && (
+                  <div className="pt-1">
+                    <h3 className="text-xs font-semibold uppercase tracking-wider text-ink-400">Descripción</h3>
+                    <p className="mt-1 whitespace-pre-line text-sm leading-relaxed text-ink-200">{item.descripcion}</p>
+                  </div>
+                )}
+
+                {item.garantia && (
+                  <div className="rounded-lg border border-brand-500/20 bg-brand-600/5 p-3">
+                    <h3 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-brand-300">
+                      <ShieldCheck className="h-3.5 w-3.5" aria-hidden /> Garantía
+                    </h3>
+                    <p className="mt-1 whitespace-pre-line text-sm leading-relaxed text-ink-200">{item.garantia}</p>
+                  </div>
+                )}
               </div>
             </Dialog.Panel>
           </Transition.Child>

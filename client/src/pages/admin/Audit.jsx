@@ -105,6 +105,9 @@ export default function Audit() {
                   <td className="px-3 py-2 font-mono text-xs">{e.entityId}</td>
                   <td className="px-3 py-2 text-xs text-ink-400">{e.ip}</td>
                   <td className="px-3 py-2">
+                    {e.changes?.resumen && (
+                      <p className="mb-1 text-xs text-ink-200">{e.changes.resumen}</p>
+                    )}
                     <details>
                       <summary className="cursor-pointer text-xs text-brand-400">ver diff</summary>
                       <pre className="mt-2 overflow-x-auto whitespace-pre-wrap break-words rounded-md bg-ink-950/60 p-2 text-[11px] text-ink-300">
@@ -137,5 +140,6 @@ function actionBadgeClass(a) {
   if (a.endsWith('.create')) return `${base} bg-emerald-500/10 text-emerald-300 ring-emerald-500/40`
   if (a.endsWith('.update')) return `${base} bg-sky-500/10 text-sky-300 ring-sky-500/40`
   if (a.endsWith('.delete')) return `${base} bg-red-500/10 text-red-300 ring-red-500/40`
+  if (a.endsWith('.stock') || a.endsWith('.disponibles')) return `${base} bg-amber-500/10 text-amber-300 ring-amber-500/40`
   return `${base} bg-ink-700/30 text-ink-200 ring-ink-600`
 }
