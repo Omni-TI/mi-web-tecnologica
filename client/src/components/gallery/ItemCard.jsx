@@ -42,16 +42,16 @@ export default function ItemCard({ item, onOpen, compact = false }) {
       className={`card group animate-fade-up overflow-hidden transition-transform duration-200 hover:-translate-y-1 hover:border-brand-500/60 hover:shadow-glow ${clickable ? 'cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500' : ''}`}
       aria-label={clickable ? `Ver detalle de ${item.nombre}` : `${item.nombre} — categoría ${item.categoria}`}
     >
-      <div className="relative flex aspect-[4/3] items-center justify-center bg-gradient-to-br from-ink-800 to-ink-950 text-ink-600">
+      <div className="relative flex aspect-[4/3] items-center justify-center bg-ink-950 text-ink-600">
         {primaryImage ? (
           <img
             {...imageProps(primaryImage, {
-              widths: [300, 600, 900],
-              sizes: '(min-width: 1280px) 20vw, (min-width: 640px) 33vw, 100vw',
+              widths: [400, 800, 1200],
+              sizes: '(min-width: 1280px) 22vw, (min-width: 640px) 40vw, 100vw',
             })}
             alt={item.nombre}
             loading="lazy"
-            className={`h-full w-full object-cover ${unavailable ? 'opacity-50 grayscale' : ''}`}
+            className={`h-full w-full object-contain ${unavailable ? 'opacity-50 grayscale' : ''}`}
           />
         ) : (
           <Zap className={`${compact ? 'h-9 w-9' : 'h-12 w-12'} ${unavailable ? 'opacity-50' : ''}`} aria-hidden />

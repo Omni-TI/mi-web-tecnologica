@@ -66,7 +66,7 @@ export default function ItemDetailModal({ item, open, onClose }) {
           <Transition.Child as={Fragment}
             enter="ease-out duration-150" enterFrom="opacity-0 scale-95" enterTo="opacity-100 scale-100"
             leave="ease-in duration-100" leaveFrom="opacity-100 scale-100" leaveTo="opacity-0 scale-95">
-            <Dialog.Panel className="w-full max-w-lg overflow-hidden rounded-2xl border border-ink-800 bg-ink-900 shadow-2xl">
+            <Dialog.Panel className="w-full max-w-2xl overflow-hidden rounded-2xl border border-ink-800 bg-ink-900 shadow-2xl">
               {/* Carrusel */}
               <div className="relative">
                 <div className="overflow-hidden" ref={emblaRef}>
@@ -75,10 +75,10 @@ export default function ItemDetailModal({ item, open, onClose }) {
                       <div className="min-w-0 flex-[0_0_100%]" key={i}>
                         <div className="aspect-[4/3] w-full bg-ink-950">
                           <img
-                            {...imageProps(src, { widths: [600, 1000, 1400], sizes: '(min-width: 640px) 512px, 100vw' })}
+                            {...imageProps(src, { widths: [800, 1200, 1600], sizes: '(min-width: 768px) 672px, 100vw' })}
                             alt={`${item.nombre} — imagen ${i + 1}`}
                             loading="lazy"
-                            className="h-full w-full object-cover"
+                            className="h-full w-full object-contain"
                             draggable={false}
                           />
                         </div>
