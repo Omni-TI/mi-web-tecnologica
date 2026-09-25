@@ -94,6 +94,11 @@ Base `/api`. Auth por **JWT + cookies HttpOnly** con **CSRF double-submit**
 
 Público:
 - `GET  /api/items` · `GET /api/items/categories` · `GET /api/health`
+- `GET  /api/settings` — configuración global del sitio. Hoy:
+  `{ stockIndicatorEnabled }` (si el catálogo muestra los indicadores de stock;
+  por defecto `false`). Lo lee `context/SettingsContext.jsx` y lo consumen
+  `ItemCard`/`ItemDetailModal`. Almacenado server-side en
+  `server/data/settings.local.json` (patrón interno, como usuarios/auditoría).
 
 Auth admin (`requireAuth`):
 - `POST /api/auth/login | logout | refresh` · `GET /api/auth/me`
@@ -102,6 +107,8 @@ Auth admin (`requireAuth`):
 - `PATCH /api/items/:id/stock` — **traspaso** disponibles ↔ en_arriendo
   (escribe ambas celdas; total constante). La auditoría registra el movimiento
   enriquecido (tipo arriendo/devolución, unidades, estado resultante).
+- `PATCH /api/settings` — alterna la config global (p. ej. el indicador de
+  stock del catálogo) desde el Panel admin.
 - `GET  /api/audit` — bitácora de acciones admin.
 
 Escritura a Sheets: celdas puntuales vía `spreadsheets.values.update/batchUpdate`

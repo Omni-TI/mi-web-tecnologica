@@ -38,6 +38,8 @@ export default function Dashboard() {
   const [query, setQuery] = useState('')           // búsqueda de la tabla
   const [adding, setAdding] = useState(false)       // modal "Agregar artículo"
   const [creating, setCreating] = useState(false)   // guardando el nuevo artículo
+  const [stockIndicator, setStockIndicator] = useState(null) // null = cargando
+  const [stockSaving, setStockSaving] = useState(false)      // guardando la preferencia
 
   // Refs para el control de escritura (no disparan re-render).
   const itemsRef = useRef(items)
@@ -74,6 +76,36 @@ export default function Dashboard() {
     const t = timers.current
     return () => { Object.values(t).forEach(clearTimeout) }
   }, [])
+
+  // Carga la preferencia global del indicador de stock.
+  useEffect(() => {
+    const ctrl = new AbortController()
+    api.getSettings(ctrl.signal)
+      .then((res) => setStockIndicator(Boolean(res?.stockIndicatorEnabled)))
+      .catch((err) => { if (err.name !== 'AbortError') setStockIndicator(false) })
+    return () => ctrl.abort()
+  }, [])
+
+  /**
+   * Alterna el indicador de stock del catálogo (preferencia GLOBAL, persistente).
+   * Optimista con reversión si el guardado falla.
+   */
+  async function toggleStockIndicator() {
+    if (stockIndicator === null || stockSaving) return
+    const next = !stockIndicator
+    setStockIndicator(next)
+    setStockSaving(true)
+    try {
+      const res = await api.updateSettings({ stockIndicatorEnabled: next })
+      setStockIndicator(Boolean(res.stockIndicatorEnabled))
+      toast.success(next ? 'Indicador de stock activado.' : 'Indicador de stock desactivado.')
+    } catch (err) {
+      setStockIndicator(!next)
+      toast.error(err.message || 'No se pudo guardar la preferencia.')
+    } finally {
+      setStockSaving(false)
+    }
+  }
 
   // Búsqueda instantánea: nombre, ID, categoría y sub-categoría.
   const filtered = useMemo(() => {
@@ -188,6 +220,39 @@ export default function Dashboard() {
 
   return (
     <>
+      {/* Interruptor global del indicador de stock del catálogo */}
+      <div className="mb-4 rounded-2xl border border-ink-800 bg-ink-900/40 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="min-w-0">
+            <h3 className="font-display text-sm font-semibold text-ink-100">Indicador de stock en el catálogo</h3>
+            <p className="mt-0.5 text-xs text-ink-400">
+              Controla si los visitantes ven los anuncios de disponibilidad («Disponible», «Quedan pocos»,
+              «Sin stock»…). Se aplica a todo el catálogo.
+            </p>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="text-xs">
+              {stockIndicator === null
+                ? <span className="text-ink-500">cargando…</span>
+                : stockIndicator
+                  ? <span className="text-emerald-300">Habilitado</span>
+                  : <span className="text-ink-400">Deshabilitado</span>}
+            </span>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={Boolean(stockIndicator)}
+              aria-label="Mostrar u ocultar el indicador de stock del catálogo"
+              onClick={toggleStockIndicator}
+              disabled={stockIndicator === null || stockSaving}
+              className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${stockIndicator ? 'bg-brand-500' : 'bg-ink-700'}`}
+            >
+              <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${stockIndicator ? 'translate-x-6' : 'translate-x-1'}`} />
+            </button>
+          </div>
+        </div>
+      </div>
+
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <h2 className="font-display text-lg font-semibold">Inventario</h2>

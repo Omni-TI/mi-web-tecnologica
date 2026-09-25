@@ -4,6 +4,7 @@ import { Routes, Route, Navigate } from 'react-router-dom'
 import PublicLayout from './components/layout/PublicLayout.jsx'
 import AdminLayout from './components/layout/AdminLayout.jsx'
 import AuthGuard from './components/admin/AuthGuard.jsx'
+import { SettingsProvider } from './context/SettingsContext.jsx'
 
 import Home from './pages/Home.jsx'
 import NotFound from './pages/NotFound.jsx'
@@ -27,6 +28,7 @@ const Loader = () => (
 
 export default function App() {
   return (
+    <SettingsProvider>
     <Suspense fallback={<Loader />}>
       <Routes>
         <Route element={<PublicLayout />}>
@@ -52,5 +54,6 @@ export default function App() {
         <Route path="*" element={<Navigate to="/404" replace />} />
       </Routes>
     </Suspense>
+    </SettingsProvider>
   )
 }

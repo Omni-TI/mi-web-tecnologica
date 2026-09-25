@@ -1,6 +1,7 @@
 import { Zap, PackageCheck, PackageX, AlertTriangle, Info } from 'lucide-react'
 import { formatCLP } from '../../lib/format.js'
 import { stockStatus } from '../../lib/stock.js'
+import { useSettings } from '../../context/SettingsContext.jsx'
 
 const STOCK_ICON = { x: PackageX, alert: AlertTriangle, check: PackageCheck, info: Info }
 
@@ -12,13 +13,15 @@ const STOCK_ICON = { x: PackageX, alert: AlertTriangle, check: PackageCheck, inf
  * cuando la grilla usa más columnas (catálogo a ancho completo).
  */
 export default function ItemCard({ item, onOpen, compact = false }) {
+  // El indicador de stock es una preferencia GLOBAL controlada desde el admin.
+  const { stockIndicatorEnabled } = useSettings()
   const stock = stockStatus(item.disponibles, {
     cantidadTotal: item.cantidad_total,
     articuloUnico: item.articulo_unico,
     noDisponible: item.no_disponible,
   })
   const StockIcon = STOCK_ICON[stock.icon]
-  const unavailable = stock.level === 'unavailable'
+  const unavailable = stockIndicatorEnabled && stock.level === 'unavailable'
   const clickable = typeof onOpen === 'function'
   const clickProps = clickable
     ? {
@@ -47,12 +50,14 @@ export default function ItemCard({ item, onOpen, compact = false }) {
         ) : (
           <Zap className={`${compact ? 'h-9 w-9' : 'h-12 w-12'} ${unavailable ? 'opacity-50' : ''}`} aria-hidden />
         )}
-        <span
-          className={`absolute right-2 top-2 inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-semibold ${stock.tone}`}
-        >
-          <StockIcon className="h-3.5 w-3.5" aria-hidden />
-          {stock.label}
-        </span>
+        {stockIndicatorEnabled && (
+          <span
+            className={`absolute right-2 top-2 inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-semibold ${stock.tone}`}
+          >
+            <StockIcon className="h-3.5 w-3.5" aria-hidden />
+            {stock.label}
+          </span>
+        )}
       </div>
 
       <div className={`${compact ? 'space-y-1.5 p-3' : 'space-y-2 p-4'}`}>

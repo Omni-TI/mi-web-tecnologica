@@ -27,6 +27,7 @@ import { csrfIssue, csrfProtect } from './middleware/csrf.js'
 import itemsRouter from './routes/items.js'
 import authRouter from './routes/auth.js'
 import auditRouter from './routes/audit.js'
+import settingsRouter from './routes/settings.js'
 import { usersBackend } from './services/users.js'
 import { getSheetsDiagnostics } from './services/sheets.js'
 
@@ -65,6 +66,9 @@ app.use('/api/auth', csrfProtect, authRouter)
 
 // Items: GET públicos sin csrf; mutaciones dentro pasan por requireAuth + csrfProtect.
 app.use('/api/items', csrfProtect, itemsRouter)
+
+// Configuración global: GET público (lo lee el catálogo), PATCH admin.
+app.use('/api/settings', csrfProtect, settingsRouter)
 
 // Auditoría (solo admin).
 app.use('/api/audit', csrfProtect, auditRouter)

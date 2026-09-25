@@ -67,6 +67,9 @@ export const api = {
   getCategories: (signal) => request('/api/items/categories', { signal }),
   health: (signal) => request('/api/health', { signal }),
 
+  getSettings: (signal) => request('/api/settings', { signal }),
+  updateSettings: (patch) => request('/api/settings', { method: 'PATCH', body: patch }),
+
   login: (username, password) => request('/api/auth/login', { method: 'POST', body: { username, password } }),
   logout: () => request('/api/auth/logout', { method: 'POST' }),
   me: (signal) => request('/api/auth/me', { signal }),

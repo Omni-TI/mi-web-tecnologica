@@ -6,6 +6,7 @@ import { X, ChevronLeft, ChevronRight, PackageCheck, PackageX, AlertTriangle, In
 import { formatCLP } from '../../lib/format.js'
 import { getItemImages } from '../../lib/itemImages.js'
 import { stockStatus } from '../../lib/stock.js'
+import { useSettings } from '../../context/SettingsContext.jsx'
 
 const STOCK_ICON = { x: PackageX, alert: AlertTriangle, check: PackageCheck, info: Info }
 
@@ -20,6 +21,7 @@ const STOCK_ICON = { x: PackageX, alert: AlertTriangle, check: PackageCheck, inf
  */
 export default function ItemDetailModal({ item, open, onClose }) {
   const images = getItemImages(item)
+  const { stockIndicatorEnabled } = useSettings() // preferencia global del indicador
   const [emblaRef, emblaApi] = useEmblaCarousel({ loop: images.length > 1 })
   const [selected, setSelected] = useState(0)
 
@@ -128,12 +130,14 @@ export default function ItemDetailModal({ item, open, onClose }) {
                   <Dialog.Title className="font-display text-xl font-bold leading-tight text-ink-50">
                     {item.nombre}
                   </Dialog.Title>
-                  <span
-                    className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold ${stock.tone}`}
-                  >
-                    <StockIcon className="h-3.5 w-3.5" aria-hidden />
-                    {stock.label}
-                  </span>
+                  {stockIndicatorEnabled && (
+                    <span
+                      className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold ${stock.tone}`}
+                    >
+                      <StockIcon className="h-3.5 w-3.5" aria-hidden />
+                      {stock.label}
+                    </span>
+                  )}
                 </div>
 
                 <div className="flex flex-wrap gap-2">
